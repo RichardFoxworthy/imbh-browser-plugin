@@ -1,12 +1,14 @@
 /**
  * Orchestrates running quotes across multiple insurance providers.
  * Manages tab creation, sequencing, and progress tracking.
+ *
+ * Supports both legacy InsuranceAdapter objects and JSON AdaptorDefinitions.
+ * JSON adaptors are identified by the _isJsonAdaptor flag and routed
+ * through the hybrid automation engine (START_HYBRID_AUTOMATION message).
  */
 
-import type { InsuranceAdapter } from '../adapters/types';
 import type { UserProfile } from '../profile/types';
 import type { QuoteRun, QuoteRunItem } from './types';
-import type { AutomationProgress } from '../content/automation-engine';
 import { uid } from '../shared/utils';
 
 export interface QuoteRunnerCallbacks {
@@ -15,12 +17,28 @@ export interface QuoteRunnerCallbacks {
 }
 
 /**
+ * An adapter passed to runQuotes may be a legacy InsuranceAdapter
+ * or a JSON adaptor wrapper with extra metadata set by the service worker.
+ */
+interface AdapterLike {
+  id: string;
+  name: string;
+  provider: string;
+  productType: string;
+  startUrl: string;
+  getSteps: (profile: UserProfile) => any[];
+  _isJsonAdaptor?: boolean;
+  _extractionRules?: any;
+  _adaptorName?: string;
+}
+
+/**
  * Run quotes for a set of adapters sequentially.
  * Opens each insurer's quote page in a new tab, runs the automation,
  * and collects results.
  */
 export async function runQuotes(
-  adapters: InsuranceAdapter[],
+  adapters: AdapterLike[],
   profile: UserProfile,
   productType: 'home' | 'motor',
   callbacks: QuoteRunnerCallbacks
@@ -65,13 +83,28 @@ export async function runQuotes(
       // Get the adapter's steps
       const steps = adapter.getSteps(profile);
 
-      // Send automation command to the content script
-      const result = await chrome.tabs.sendMessage(tab.id, {
-        type: 'START_AUTOMATION',
-        adapterId: adapter.id,
-        steps: serializeSteps(steps),
-        profile,
-      });
+      // Route to the appropriate automation engine
+      let result: any;
+
+      if (adapter._isJsonAdaptor) {
+        // JSON adaptor → hybrid engine (auto/assist mode)
+        result = await chrome.tabs.sendMessage(tab.id, {
+          type: 'START_HYBRID_AUTOMATION',
+          adaptorId: adapter.id,
+          adaptorName: adapter._adaptorName || adapter.provider,
+          steps,
+          extractionRules: adapter._extractionRules,
+          profile,
+        });
+      } else {
+        // Legacy adapter → original engine
+        result = await chrome.tabs.sendMessage(tab.id, {
+          type: 'START_AUTOMATION',
+          adapterId: adapter.id,
+          steps: serializeSteps(steps),
+          profile,
+        });
+      }
 
       if (result.success && result.quote) {
         item.status = 'completed';
@@ -138,7 +171,7 @@ function waitForTabLoad(tabId: number): Promise<void> {
   });
 }
 
-/** Serialize adapter steps for messaging (functions become strings). */
+/** Serialize legacy adapter steps for messaging (functions become strings). */
 function serializeSteps(steps: any[]): any[] {
   return steps.map((step) => ({
     ...step,

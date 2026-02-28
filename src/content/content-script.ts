@@ -2,12 +2,23 @@
  * Content script entry point.
  * Injected into insurer websites. Listens for commands from the background
  * service worker and executes form automation.
+ *
+ * Supports two automation paths:
+ * - START_AUTOMATION: legacy path using static TypeScript adapters
+ * - START_HYBRID_AUTOMATION: crowdsourced JSON adaptors with auto/assist mode
  */
 
 import { executeAdapterSteps } from './automation-engine';
+import { executeHybridSteps } from './hybrid-automation-engine';
 import type { AdapterStep, QuoteResult } from '../adapters/types';
+import type { AdaptorStep, ExtractionRules, StepContribution } from '../adaptors/types';
 import type { UserProfile } from '../profile/types';
 import type { AutomationProgress } from './automation-engine';
+import type { HybridProgress, SelectorHealthEvent } from './hybrid-automation-engine';
+
+// ---------------------------------------------------------------------------
+// Message types
+// ---------------------------------------------------------------------------
 
 interface StartAutomationMessage {
   type: 'START_AUTOMATION';
@@ -16,13 +27,25 @@ interface StartAutomationMessage {
   profile: UserProfile;
 }
 
+interface StartHybridAutomationMessage {
+  type: 'START_HYBRID_AUTOMATION';
+  adaptorId: string;
+  adaptorName: string;
+  steps: AdaptorStep[];
+  extractionRules: ExtractionRules;
+  profile: UserProfile;
+}
+
 interface PingMessage {
   type: 'PING';
 }
 
-type IncomingMessage = StartAutomationMessage | PingMessage;
+type IncomingMessage = StartAutomationMessage | StartHybridAutomationMessage | PingMessage;
 
-// Listen for messages from the background service worker
+// ---------------------------------------------------------------------------
+// Message listener
+// ---------------------------------------------------------------------------
+
 chrome.runtime.onMessage.addListener(
   (message: IncomingMessage, _sender, sendResponse) => {
     if (message.type === 'PING') {
@@ -31,32 +54,111 @@ chrome.runtime.onMessage.addListener(
     }
 
     if (message.type === 'START_AUTOMATION') {
-      handleAutomation(message).then(sendResponse);
-      return true; // Keep the message channel open for async response
+      handleLegacyAutomation(message).then(sendResponse);
+      return true;
+    }
+
+    if (message.type === 'START_HYBRID_AUTOMATION') {
+      handleHybridAutomation(message).then(sendResponse);
+      return true;
     }
 
     return false;
   }
 );
 
-async function handleAutomation(
+// ---------------------------------------------------------------------------
+// Hybrid automation (crowdsourced JSON adaptors)
+// ---------------------------------------------------------------------------
+
+async function handleHybridAutomation(
+  message: StartHybridAutomationMessage
+): Promise<{ success: boolean; quote: QuoteResult | null; contributions: StepContribution[]; error?: string }> {
+  const { adaptorId, adaptorName, steps, extractionRules, profile } = message;
+
+  function extractQuote(doc: Document): QuoteResult | null {
+    // Try adaptor-specific extraction rules first
+    const ruleResult = extractWithRules(doc, extractionRules, adaptorName);
+    if (ruleResult) return ruleResult;
+    // Fall back to generic extraction
+    return extractQuoteFromPage();
+  }
+
+  function onProgress(progress: HybridProgress) {
+    chrome.runtime.sendMessage({
+      type: 'AUTOMATION_PROGRESS',
+      adapterId: progress.adaptorId,
+      stepIndex: progress.stepIndex,
+      totalSteps: progress.totalSteps,
+      stepName: progress.stepName,
+      status: progress.status === 'assist-needed' ? 'paused-unknown-field' : progress.status,
+      message: progress.message,
+      filledFields: progress.filledFields,
+      skippedFields: progress.skippedFields,
+      mode: progress.mode,
+    });
+  }
+
+  function onSelectorHealth(event: SelectorHealthEvent) {
+    chrome.runtime.sendMessage({
+      type: 'SELECTOR_HEALTH',
+      ...event,
+    });
+  }
+
+  try {
+    const result = await executeHybridSteps(
+      steps,
+      profile,
+      adaptorId,
+      adaptorName,
+      extractQuote,
+      onProgress,
+      onSelectorHealth
+    );
+
+    // Submit any contributions collected during the run
+    if (result.contributions.length > 0) {
+      chrome.runtime.sendMessage({
+        type: 'SUBMIT_CONTRIBUTIONS',
+        contributions: result.contributions,
+      });
+    }
+
+    return {
+      success: result.success,
+      quote: result.quote,
+      contributions: result.contributions,
+      error: result.error,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      quote: null,
+      contributions: [],
+      error: err instanceof Error ? err.message : 'Unknown error',
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Legacy automation (static TypeScript adapters)
+// ---------------------------------------------------------------------------
+
+async function handleLegacyAutomation(
   message: StartAutomationMessage
 ): Promise<{ success: boolean; quote: QuoteResult | null; error?: string }> {
   const { adapterId, steps, profile } = message;
 
-  // Deserialise steps — transform functions are serialised as strings
   const hydratedSteps = steps.map((step) => ({
     ...step,
     fields: step.fields.map((f) => ({
       ...f,
-      // Transform functions can't be serialised, so adapters should use
-      // simple string transforms that are re-evaluated here
       transform: f.transform ? new Function('return ' + f.transform)() : undefined,
     })),
   }));
 
   function onProgress(progress: AutomationProgress) {
-    // Forward progress to background service worker
     chrome.runtime.sendMessage({
       type: 'AUTOMATION_PROGRESS',
       ...progress,
@@ -68,9 +170,6 @@ async function handleAutomation(
       hydratedSteps,
       profile,
       adapterId,
-      // The extractQuote function needs to be run here in the content script context.
-      // We'll use a generic extractor — specific extractors are defined in adapters
-      // and sent as part of the step definitions.
       (_doc) => extractQuoteFromPage(),
       onProgress
     );
@@ -89,33 +188,92 @@ async function handleAutomation(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Quote extraction
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract a quote using adaptor-specific extraction rules.
+ */
+function extractWithRules(
+  doc: Document,
+  rules: ExtractionRules,
+  providerName: string
+): QuoteResult | null {
+  let premiumText: string | null = null;
+  for (const sel of rules.premiumSelectors) {
+    const el = doc.querySelector(sel);
+    if (el?.textContent) {
+      premiumText = el.textContent;
+      break;
+    }
+  }
+  if (!premiumText) return null;
+
+  const premiumMatch = premiumText.match(/\$?([\d,]+(?:\.\d{2})?)/);
+  if (!premiumMatch) return null;
+  const annual = parseFloat(premiumMatch[1].replace(/,/g, ''));
+
+  let excess = 0;
+  for (const sel of rules.excessSelectors) {
+    const el = doc.querySelector(sel);
+    if (el?.textContent) {
+      const m = el.textContent.match(/\$?([\d,]+)/);
+      if (m) excess = parseFloat(m[1].replace(/,/g, ''));
+      break;
+    }
+  }
+
+  const inclusions: string[] = [];
+  for (const sel of rules.inclusionSelectors) {
+    doc.querySelectorAll(sel).forEach((el) => {
+      if (el.textContent) inclusions.push(el.textContent.trim());
+    });
+    if (inclusions.length > 0) break;
+  }
+
+  const exclusions: string[] = [];
+  for (const sel of rules.exclusionSelectors || []) {
+    doc.querySelectorAll(sel).forEach((el) => {
+      if (el.textContent) exclusions.push(el.textContent.trim());
+    });
+    if (exclusions.length > 0) break;
+  }
+
+  return {
+    provider: providerName,
+    product: '',
+    premium: { annual },
+    excess,
+    inclusions,
+    exclusions,
+    retrievedAt: new Date().toISOString(),
+    sourceUrl: doc.location?.href || '',
+    raw: { premiumText: premiumText || '' },
+  };
+}
+
 /**
  * Generic quote extraction — looks for common price patterns on the page.
- * Adapters can override this with specific selectors.
  */
 function extractQuoteFromPage(): QuoteResult | null {
-  // Look for price-like patterns in the visible page
   const pricePattern = /\$[\d,]+(?:\.\d{2})?/g;
   const bodyText = document.body.innerText;
   const prices = bodyText.match(pricePattern);
 
   if (!prices || prices.length === 0) return null;
 
-  // Parse all found prices
   const parsedPrices = prices
     .map((p) => parseFloat(p.replace(/[$,]/g, '')))
-    .filter((p) => p > 50 && p < 50000) // Reasonable insurance premium range
+    .filter((p) => p > 50 && p < 50000)
     .sort((a, b) => a - b);
 
   if (parsedPrices.length === 0) return null;
 
-  // The main premium is typically the most prominent price
-  const premium = parsedPrices[0];
-
   return {
     provider: document.title || 'Unknown',
     product: '',
-    premium: { annual: premium },
+    premium: { annual: parsedPrices[0] },
     excess: 0,
     inclusions: [],
     exclusions: [],

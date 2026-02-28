@@ -126,7 +126,7 @@ export function createQuoteExtractor(
 
     return {
       provider: definition.provider,
-      product: definition.name || `${definition.provider} ${definition.productType}`,
+      product: `${definition.provider} ${definition.productType}`,
       premium: { annual },
       excess,
       inclusions,

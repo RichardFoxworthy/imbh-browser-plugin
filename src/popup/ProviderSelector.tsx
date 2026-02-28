@@ -9,6 +9,8 @@ interface AdapterInfo {
   provider: string;
   productType: string;
   enabled: boolean;
+  confidence?: number;   // 0–1, from crowdsourced adaptor system
+  source?: 'crowdsourced' | 'legacy';
 }
 
 interface Props {
@@ -153,7 +155,14 @@ export function ProviderSelector({ profile, onStartQuoting }: Props) {
                     <div className="text-sm font-medium text-gray-900 truncate">
                       {adapter.provider}
                     </div>
-                    <div className="text-xs text-gray-500 truncate">{adapter.name}</div>
+                    <div className="text-xs text-gray-500 truncate">
+                      {adapter.name}
+                      {adapter.confidence != null && adapter.confidence < 0.5 && (
+                        <span className="ml-1 text-amber-500" title="May need manual help">
+                          — may need your help
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </label>
               </Card>

@@ -13,7 +13,7 @@ const statusIcons: Record<string, string> = {
   completed: '\u2705',
   error: '\u274C',
   'paused-captcha': '\u26A0\uFE0F',
-  'paused-unknown-field': '\u2753',
+  'paused-unknown-field': '\uD83D\uDC46',
   skipped: '\u23ED',
 };
 
@@ -23,7 +23,7 @@ const statusColors: Record<string, string> = {
   completed: 'text-green-600',
   error: 'text-red-600',
   'paused-captcha': 'text-amber-600',
-  'paused-unknown-field': 'text-amber-600',
+  'paused-unknown-field': 'text-blue-500',
   skipped: 'text-gray-500',
 };
 
@@ -124,7 +124,8 @@ export function QuoteProgress({ onComplete }: Props) {
       {!isComplete && (
         <p className="text-xs text-gray-400 text-center">
           Please keep this window open while quotes are being retrieved.
-          You'll be notified if any site requires your attention (e.g., CAPTCHA).
+          You may be asked to help navigate unfamiliar form sections — your input
+          helps improve the experience for all users.
         </p>
       )}
     </div>
