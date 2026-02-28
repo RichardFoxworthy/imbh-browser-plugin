@@ -1,0 +1,59 @@
+{
+  "manifest_version": 3,
+  "name": "Insurance Quote Comparison",
+  "version": "0.1.0",
+  "description": "Compare home, contents, and motor insurance quotes from Australian providers. All data stays on your device.",
+  "permissions": [
+    "activeTab",
+    "tabs",
+    "storage",
+    "sidePanel",
+    "alarms"
+  ],
+  "host_permissions": [
+    "https://*.nrma.com.au/*",
+    "https://*.aami.com.au/*",
+    "https://*.budgetdirect.com.au/*",
+    "https://*.allianz.com.au/*",
+    "https://*.youi.com.au/*",
+    "https://*.qbe.com.au/*",
+    "https://*.gio.com.au/*",
+    "https://*.cgu.com.au/*",
+    "https://*.racv.com.au/*",
+    "https://*.racq.com.au/*",
+    "https://*.woolworthsinsurance.com.au/*",
+    "https://*.colesinsurance.com.au/*",
+    "https://*.commbank.com.au/*",
+    "https://*.realinsurance.com.au/*",
+    "https://*.bingle.com.au/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "background": {
+    "service_worker": "service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://*.nrma.com.au/*", "https://*.aami.com.au/*", "https://*.budgetdirect.com.au/*", "https://*.allianz.com.au/*", "https://*.youi.com.au/*", "https://*.qbe.com.au/*", "https://*.gio.com.au/*", "https://*.cgu.com.au/*", "https://*.racv.com.au/*", "https://*.racq.com.au/*", "https://*.woolworthsinsurance.com.au/*", "https://*.colesinsurance.com.au/*", "https://*.commbank.com.au/*", "https://*.realinsurance.com.au/*", "https://*.bingle.com.au/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  }
+}

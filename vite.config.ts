@@ -1,0 +1,37 @@
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import { resolve } from 'path';
+import { viteStaticCopy } from 'vite-plugin-static-copy';
+
+export default defineConfig({
+  plugins: [
+    react(),
+    viteStaticCopy({
+      targets: [
+        { src: 'public/manifest.json', dest: '.' },
+        { src: 'public/icons/*', dest: 'icons' },
+      ],
+    }),
+  ],
+  resolve: {
+    alias: {
+      '@': resolve(__dirname, 'src'),
+    },
+  },
+  build: {
+    outDir: 'dist',
+    rollupOptions: {
+      input: {
+        popup: resolve(__dirname, 'src/popup/popup.html'),
+        sidepanel: resolve(__dirname, 'src/sidepanel/sidepanel.html'),
+        'service-worker': resolve(__dirname, 'src/background/service-worker.ts'),
+        content: resolve(__dirname, 'src/content/content-script.ts'),
+      },
+      output: {
+        entryFileNames: '[name].js',
+        chunkFileNames: 'chunks/[name]-[hash].js',
+        assetFileNames: 'assets/[name]-[hash][extname]',
+      },
+    },
+  },
+});
