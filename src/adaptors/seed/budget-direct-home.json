@@ -1,0 +1,267 @@
+{
+  "id": "budget-direct-home",
+  "version": 1,
+  "provider": "Budget Direct",
+  "productType": "home-and-contents",
+  "logoUrl": "",
+  "startUrl": "https://www.budgetdirect.com.au/home-insurance/get-quote.html",
+  "enabled": true,
+  "updatedAt": "2026-02-28T00:00:00.000Z",
+  "steps": [
+    {
+      "id": "address",
+      "name": "Property Address",
+      "urlPattern": "budgetdirect\\.com\\.au.*get-quote",
+      "waitForSelector": "[data-step=\"address\"], #address-search, input[name*=\"address\"]",
+      "fallbackWaitSelectors": [
+        "input[placeholder*=\"address\"]",
+        "form input[type=\"text\"]:first-of-type"
+      ],
+      "fields": [
+        {
+          "selector": "#address-search",
+          "fallbackSelectors": [
+            "input[name*=\"address\"]",
+            "input[placeholder*=\"address\"]",
+            "[data-testid=\"address-input\"]"
+          ],
+          "labelMatch": "property address",
+          "profilePath": "personal.currentAddress",
+          "action": "typeAndSelect",
+          "transform": {
+            "type": "address",
+            "format": "full"
+          }
+        }
+      ],
+      "nextAction": {
+        "selector": "button[type=\"submit\"], button.continue",
+        "action": "click"
+      },
+      "timeout": 15000,
+      "confidence": 0.5,
+      "lastVerified": "2026-02-28T00:00:00.000Z",
+      "contributorCount": 0,
+      "failureCount": 0
+    },
+    {
+      "id": "property-details",
+      "name": "Property Details",
+      "urlPattern": "budgetdirect\\.com\\.au.*property",
+      "waitForSelector": "[data-step=\"property\"], .property-details, form",
+      "fallbackWaitSelectors": [
+        "select[name*=\"propertyType\"]",
+        "#property-type"
+      ],
+      "fields": [
+        {
+          "selector": "select[name*=\"propertyType\"], #property-type",
+          "fallbackSelectors": ["[data-testid=\"property-type\"]"],
+          "labelMatch": "property type",
+          "profilePath": "home.propertyType",
+          "action": "select"
+        },
+        {
+          "selector": "select[name*=\"construction\"], #construction-type",
+          "fallbackSelectors": ["[data-testid=\"construction\"]"],
+          "labelMatch": "construction type",
+          "profilePath": "home.constructionType",
+          "action": "select"
+        },
+        {
+          "selector": "select[name*=\"roofType\"], #roof-type",
+          "fallbackSelectors": ["[data-testid=\"roof-type\"]"],
+          "labelMatch": "roof",
+          "profilePath": "home.roofType",
+          "action": "select"
+        },
+        {
+          "selector": "input[name*=\"yearBuilt\"], #year-built",
+          "fallbackSelectors": ["[data-testid=\"year-built\"]"],
+          "labelMatch": "year built",
+          "profilePath": "home.yearBuilt",
+          "action": "type"
+        },
+        {
+          "selector": "select[name*=\"bedrooms\"], #bedrooms",
+          "fallbackSelectors": ["[data-testid=\"bedrooms\"]"],
+          "labelMatch": "bedrooms",
+          "profilePath": "home.numberOfBedrooms",
+          "action": "select"
+        }
+      ],
+      "nextAction": {
+        "selector": "button[type=\"submit\"], button.continue",
+        "action": "click"
+      },
+      "timeout": 15000,
+      "confidence": 0.5,
+      "lastVerified": "2026-02-28T00:00:00.000Z",
+      "contributorCount": 0,
+      "failureCount": 0
+    },
+    {
+      "id": "security",
+      "name": "Security & Features",
+      "waitForSelector": "[data-step=\"security\"], .security-features, form",
+      "fallbackWaitSelectors": [
+        "input[name*=\"alarm\"]",
+        "#security-alarm"
+      ],
+      "fields": [
+        {
+          "selector": "input[name*=\"alarm\"], #security-alarm",
+          "fallbackSelectors": ["[data-testid=\"alarm\"]"],
+          "labelMatch": "security alarm",
+          "profilePath": "home.securityAlarm",
+          "action": "radio",
+          "transform": { "type": "boolean", "trueValue": "yes", "falseValue": "no" }
+        },
+        {
+          "selector": "input[name*=\"deadlock\"], #deadlocks",
+          "fallbackSelectors": ["[data-testid=\"deadlocks\"]"],
+          "labelMatch": "deadlock",
+          "profilePath": "home.deadlocks",
+          "action": "radio",
+          "transform": { "type": "boolean", "trueValue": "yes", "falseValue": "no" }
+        },
+        {
+          "selector": "input[name*=\"pool\"], #swimming-pool",
+          "fallbackSelectors": ["[data-testid=\"pool\"]"],
+          "labelMatch": "swimming pool",
+          "profilePath": "home.swimmingPool",
+          "action": "radio",
+          "transform": { "type": "boolean", "trueValue": "yes", "falseValue": "no" }
+        }
+      ],
+      "nextAction": {
+        "selector": "button[type=\"submit\"], button.continue",
+        "action": "click"
+      },
+      "timeout": 15000,
+      "confidence": 0.5,
+      "lastVerified": "2026-02-28T00:00:00.000Z",
+      "contributorCount": 0,
+      "failureCount": 0
+    },
+    {
+      "id": "cover-details",
+      "name": "Cover Details",
+      "waitForSelector": "[data-step=\"cover\"], .cover-details, form",
+      "fallbackWaitSelectors": [
+        "input[name*=\"buildingSum\"]",
+        "#building-sum"
+      ],
+      "fields": [
+        {
+          "selector": "input[name*=\"buildingSum\"], #building-sum",
+          "fallbackSelectors": ["[data-testid=\"building-sum\"]"],
+          "labelMatch": "building sum insured",
+          "profilePath": "home.buildingSumInsured",
+          "action": "type"
+        },
+        {
+          "selector": "input[name*=\"contentsSum\"], #contents-sum",
+          "fallbackSelectors": ["[data-testid=\"contents-sum\"]"],
+          "labelMatch": "contents sum insured",
+          "profilePath": "home.contentsSumInsured",
+          "action": "type"
+        },
+        {
+          "selector": "select[name*=\"excess\"], #excess",
+          "fallbackSelectors": ["[data-testid=\"excess\"]"],
+          "labelMatch": "excess",
+          "profilePath": "home.excessPreference",
+          "action": "select"
+        }
+      ],
+      "nextAction": {
+        "selector": "button[type=\"submit\"], button.continue",
+        "action": "click"
+      },
+      "timeout": 15000,
+      "confidence": 0.5,
+      "lastVerified": "2026-02-28T00:00:00.000Z",
+      "contributorCount": 0,
+      "failureCount": 0
+    },
+    {
+      "id": "personal-details",
+      "name": "Personal Details",
+      "waitForSelector": "[data-step=\"personal\"], .personal-details, form",
+      "fallbackWaitSelectors": [
+        "input[name*=\"firstName\"]",
+        "#first-name"
+      ],
+      "fields": [
+        {
+          "selector": "input[name*=\"firstName\"], #first-name",
+          "fallbackSelectors": ["[data-testid=\"first-name\"]"],
+          "labelMatch": "first name",
+          "profilePath": "personal.firstName",
+          "action": "type"
+        },
+        {
+          "selector": "input[name*=\"lastName\"], #last-name",
+          "fallbackSelectors": ["[data-testid=\"last-name\"]"],
+          "labelMatch": "last name",
+          "profilePath": "personal.lastName",
+          "action": "type"
+        },
+        {
+          "selector": "input[name*=\"dob\"], input[name*=\"dateOfBirth\"], #dob",
+          "fallbackSelectors": ["[data-testid=\"dob\"]"],
+          "labelMatch": "date of birth",
+          "profilePath": "personal.dateOfBirth",
+          "action": "type",
+          "transform": { "type": "date", "outputFormat": "DD/MM/YYYY" }
+        },
+        {
+          "selector": "input[name*=\"email\"], #email",
+          "fallbackSelectors": ["[data-testid=\"email\"]"],
+          "labelMatch": "email",
+          "profilePath": "personal.email",
+          "action": "type"
+        },
+        {
+          "selector": "input[name*=\"phone\"], #phone",
+          "fallbackSelectors": ["[data-testid=\"phone\"]"],
+          "labelMatch": "phone",
+          "profilePath": "personal.phone",
+          "action": "type"
+        }
+      ],
+      "nextAction": {
+        "selector": "button[type=\"submit\"], button.get-quote, button.calculate",
+        "action": "click"
+      },
+      "timeout": 15000,
+      "confidence": 0.5,
+      "lastVerified": "2026-02-28T00:00:00.000Z",
+      "contributorCount": 0,
+      "failureCount": 0
+    }
+  ],
+  "extractionRules": {
+    "premiumSelectors": [
+      ".quote-premium .amount",
+      ".annual-premium",
+      "[data-testid=\"premium-amount\"]",
+      ".premium-display .price",
+      ".quote-result .price"
+    ],
+    "excessSelectors": [
+      ".excess-amount",
+      "[data-testid=\"excess-amount\"]",
+      ".excess .amount"
+    ],
+    "inclusionSelectors": [
+      ".cover-includes li",
+      ".inclusions li",
+      "[data-testid=\"inclusion\"]"
+    ],
+    "exclusionSelectors": [],
+    "confidence": 0.5,
+    "lastVerified": "2026-02-28T00:00:00.000Z"
+  }
+}

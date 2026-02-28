@@ -1,7 +1,7 @@
 import { openDB, type IDBPDatabase } from 'idb';
 
 const DB_NAME = 'quote-compare';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 export interface QuoteCompareDB {
   profiles: {
@@ -42,6 +42,43 @@ export interface QuoteCompareDB {
       error?: string;
     };
   };
+  // Crowdsourced adaptor cache
+  adaptorCache: {
+    key: string;
+    value: {
+      adaptorId: string;
+      definition: any; // AdaptorDefinition (imported separately to avoid circular deps)
+      cachedAt: string;
+    };
+  };
+  // Pending contributions to submit to the central service
+  pendingContributions: {
+    key: string;
+    value: {
+      id: string;
+      contribution: any; // StepContribution
+      createdAt: string;
+      retryCount: number;
+    };
+  };
+  // Selector health telemetry (tracks which selectors work/fail per run)
+  selectorHealth: {
+    key: string;
+    value: {
+      id: string;
+      adaptorId: string;
+      stepId: string;
+      fieldPath: string;
+      primarySelector: string;
+      primaryWorked: boolean;
+      fallbackUsed: string | null;
+      labelMatchUsed: boolean;
+      timestamp: string;
+    };
+    indexes: {
+      'by-adaptor': string;
+    };
+  };
 }
 
 let dbInstance: IDBPDatabase | null = null;
@@ -50,27 +87,49 @@ export async function getDb(): Promise<IDBPDatabase> {
   if (dbInstance) return dbInstance;
 
   dbInstance = await openDB(DB_NAME, DB_VERSION, {
-    upgrade(db) {
-      // Profiles store (encrypted)
-      if (!db.objectStoreNames.contains('profiles')) {
-        db.createObjectStore('profiles', { keyPath: 'id' });
+    upgrade(db, oldVersion) {
+      // --- v1 stores ---
+      if (oldVersion < 1) {
+        // Profiles store (encrypted)
+        if (!db.objectStoreNames.contains('profiles')) {
+          db.createObjectStore('profiles', { keyPath: 'id' });
+        }
+
+        // Quote results
+        if (!db.objectStoreNames.contains('quotes')) {
+          const quoteStore = db.createObjectStore('quotes', { keyPath: 'id' });
+          quoteStore.createIndex('by-provider', 'provider');
+          quoteStore.createIndex('by-date', 'retrievedAt');
+        }
+
+        // Settings
+        if (!db.objectStoreNames.contains('settings')) {
+          db.createObjectStore('settings', { keyPath: 'key' });
+        }
+
+        // Adapter health
+        if (!db.objectStoreNames.contains('adapterHealth')) {
+          db.createObjectStore('adapterHealth', { keyPath: 'adapterId' });
+        }
       }
 
-      // Quote results
-      if (!db.objectStoreNames.contains('quotes')) {
-        const quoteStore = db.createObjectStore('quotes', { keyPath: 'id' });
-        quoteStore.createIndex('by-provider', 'provider');
-        quoteStore.createIndex('by-date', 'retrievedAt');
-      }
+      // --- v2 stores (crowdsourced adaptors) ---
+      if (oldVersion < 2) {
+        // Cached adaptor definitions fetched from the central service
+        if (!db.objectStoreNames.contains('adaptorCache')) {
+          db.createObjectStore('adaptorCache', { keyPath: 'adaptorId' });
+        }
 
-      // Settings
-      if (!db.objectStoreNames.contains('settings')) {
-        db.createObjectStore('settings', { keyPath: 'key' });
-      }
+        // Queued contributions awaiting submission
+        if (!db.objectStoreNames.contains('pendingContributions')) {
+          db.createObjectStore('pendingContributions', { keyPath: 'id' });
+        }
 
-      // Adapter health
-      if (!db.objectStoreNames.contains('adapterHealth')) {
-        db.createObjectStore('adapterHealth', { keyPath: 'adapterId' });
+        // Selector health telemetry
+        if (!db.objectStoreNames.contains('selectorHealth')) {
+          const healthStore = db.createObjectStore('selectorHealth', { keyPath: 'id' });
+          healthStore.createIndex('by-adaptor', 'adaptorId');
+        }
       }
     },
   });
