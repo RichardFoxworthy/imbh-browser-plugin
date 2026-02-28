@@ -23,12 +23,13 @@ export default defineConfig({
       '@': resolve(__dirname, 'src'),
     },
   },
+  base: './',
   build: {
     outDir: 'dist',
     rollupOptions: {
       input: {
-        popup: resolve(__dirname, 'src/popup/popup.html'),
-        sidepanel: resolve(__dirname, 'src/sidepanel/sidepanel.html'),
+        popup: resolve(__dirname, 'popup.html'),
+        sidepanel: resolve(__dirname, 'sidepanel.html'),
         'service-worker': resolve(__dirname, 'src/background/service-worker.ts'),
         content: resolve(__dirname, 'src/content/content-script.ts'),
       },
