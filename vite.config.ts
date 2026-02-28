@@ -3,6 +3,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
+import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
   test: {
@@ -10,6 +11,7 @@ export default defineConfig({
     include: ['tests/**/*.test.ts'],
   },
   plugins: [
+    tailwindcss(),
     react(),
     viteStaticCopy({
       targets: [
