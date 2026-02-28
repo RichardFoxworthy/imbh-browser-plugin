@@ -20,7 +20,7 @@ import { writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 
 const ADAPTERS = [
-  { id: 'budget-direct-home', url: 'https://www.budgetdirect.com.au/home-insurance/get-quote.html', type: 'home' },
+  { id: 'budget-direct-home', url: 'https://www.budgetdirect.com.au/start/home-contents.html', type: 'home' },
   { id: 'nrma-home', url: 'https://www.nrma.com.au/home-insurance/get-quote', type: 'home' },
   { id: 'aami-home', url: 'https://www.aami.com.au/home-insurance/get-quote.html', type: 'home' },
   { id: 'allianz-home', url: 'https://www.allianz.com.au/home-insurance/get-quote', type: 'home' },
@@ -85,9 +85,12 @@ JSON.stringify(
 )
 `.replace(/\n/g, ' ').trim();
 
+const HEADED = process.argv.includes('--headed');
+
 function ab(cmd, timeout = 30000) {
   try {
-    return execSync(`npx agent-browser ${cmd}`, {
+    const headedFlag = HEADED ? ' --headed' : '';
+    return execSync(`npx agent-browser${headedFlag} ${cmd}`, {
       encoding: 'utf-8',
       timeout,
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -119,8 +122,10 @@ async function discoverSelectors(adapter) {
     return null;
   }
 
-  // Wait for page to settle
-  ab('wait 3000');
+  // Wait for page to settle (longer in headed mode for manual CAPTCHA)
+  const waitMs = HEADED ? 30000 : 3000;
+  if (HEADED) console.log('  Waiting 30s — solve the CAPTCHA in the browser window...');
+  ab(`wait ${waitMs}`, waitMs + 10000);
 
   // Take a screenshot for reference
   const screenshotPath = join(OUTPUT_DIR, `${adapter.id}-page1.png`);
@@ -172,7 +177,7 @@ function safeParseJson(str) {
 }
 
 async function main() {
-  const targetId = process.argv[2];
+  const targetId = process.argv.filter(a => a !== '--headed')[2];
   const targets = targetId
     ? ADAPTERS.filter((a) => a.id === targetId)
     : ADAPTERS;

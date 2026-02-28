@@ -17,7 +17,7 @@ export class BudgetDirectHomeAdapter extends BaseAdapter {
       provider: 'Budget Direct',
       productType: 'home-and-contents',
       logoUrl: '',
-      startUrl: 'https://www.budgetdirect.com.au/home-insurance/get-quote.html',
+      startUrl: 'https://www.budgetdirect.com.au/start/home-contents.html',
     });
   }
 

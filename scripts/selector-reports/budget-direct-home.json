@@ -1,0 +1,433 @@
+{
+  "adapterId": "budget-direct-home",
+  "url": "https://www.budgetdirect.com.au/start/home-contents.html",
+  "actualUrl": "https://secure.budgetdirect.com.au/home/3.0/?brand=BUDD&LinkId=11119",
+  "type": "home",
+  "discoveredAt": "2026-02-28T08:00:00.000Z",
+  "notes": "Form uses hash-based SPA routing. Each step is a separate URL fragment. Most fields use button-based selection (not dropdowns/inputs). Cloudflare Turnstile blocks Playwright — requires real browser via CDP. Angular-based form requires inserttext (not fill) for text inputs to trigger change detection.",
+  "steps": [
+    {
+      "step": 0,
+      "name": "Duty of Disclosure / Agree",
+      "urlFragment": "#!/duty-of-disclosure",
+      "heading": "You're 2 minutes from your quote. But first a few important things...",
+      "fields": [],
+      "nextAction": { "type": "button", "text": "I Agree & Continue" }
+    },
+    {
+      "step": 1,
+      "name": "Property Address",
+      "urlFragment": "#!/address",
+      "heading": "What is the address of the property to be insured?",
+      "fields": [
+        { "type": "textbox", "placeholder": "Postcode", "profilePath": "home.postcode", "action": "type", "notes": "Must enter postcode first to enable Address field" },
+        { "type": "textbox", "placeholder": "Address", "profilePath": "personal.currentAddress", "action": "typeAndSelect", "notes": "Disabled until postcode entered. Shows autocomplete listbox. Must click an option." }
+      ],
+      "nextAction": { "type": "button", "text": "Next" }
+    },
+    {
+      "step": 2,
+      "name": "Property Type",
+      "urlFragment": "#!/property-type",
+      "heading": "What type of property is the home?",
+      "fields": [
+        { "type": "button-select", "profilePath": "home.propertyType", "action": "clickButton", "options": ["Freestanding House", "Townhouse", "Apartment/Flat/Unit", "Duplex", "Semi-Detached House", "Terrace House", "Villa", "Other"] }
+      ],
+      "nextAction": { "type": "auto" }
+    },
+    {
+      "step": 3,
+      "name": "Home Elevation",
+      "urlFragment": "#!/home-elevation",
+      "heading": "Is the home elevated by at least 1m above ground all the way around the property?",
+      "fields": [
+        { "type": "button-select", "profilePath": "home.elevated", "action": "clickButton", "options": ["No, not elevated", "Yes, completely elevated by at least 1m all the way around", "No, elevated by less than 1m"] }
+      ],
+      "nextAction": { "type": "auto" }
+    },
+    {
+      "step": 4,
+      "name": "Body Corporate",
+      "urlFragment": "#!/body-corporate",
+      "heading": "Is the home part of a body corporate/strata title complex?",
+      "fields": [
+        { "type": "button-select", "profilePath": "home.bodyCorporate", "action": "clickButton", "options": ["Yes", "No", "Don't Know"] }
+      ],
+      "nextAction": { "type": "auto" }
+    },
+    {
+      "step": 5,
+      "name": "Occupancy",
+      "urlFragment": "#!/occupancy",
+      "heading": "How is the property occupied?",
+      "fields": [
+        { "type": "button-select", "profilePath": "home.occupancy", "action": "clickButton", "options": ["Owner occupied", "Owner - yet to occupy", "Rented to tenants - landlord", "Renting as a tenant", "Owner - to be rental investment", "Holiday home - not rented", "Holiday home - may be rented"] }
+      ],
+      "nextAction": { "type": "auto" }
+    },
+    {
+      "step": 6,
+      "name": "Year Moved In",
+      "urlFragment": "#!/year-moved-in",
+      "heading": "When did you move into this address?",
+      "fields": [
+        { "type": "button-select", "profilePath": "home.yearMovedIn", "action": "clickButton", "options": ["This Year (2026)", "Last Year (2025)", "2 Years Ago (2024)", "3 Years Ago (2023)", "4 Years Ago (2022)", "5 Years Ago (2021)", "More than 5 Years Ago", "Not yet living at this address"] }
+      ],
+      "nextAction": { "type": "auto" }
+    },
+    {
+      "step": 7,
+      "name": "Cover Type",
+      "urlFragment": "#!/cover-type",
+      "heading": "What type of cover are you looking for?",
+      "fields": [
+        { "type": "button-select", "profilePath": "home.coverType", "action": "clickButton", "options": ["Home & Contents", "Home Only", "Contents Only"] }
+      ],
+      "nextAction": { "type": "auto" }
+    },
+    {
+      "step": 8,
+      "name": "Construction Date",
+      "urlFragment": "#!/construction-date",
+      "heading": "When was the home constructed?",
+      "fields": [
+        { "type": "button-select", "profilePath": "home.constructionDate", "action": "clickButton", "options": ["2011+", "2000-2010", "1990-1999", "1980-1989", "1970-1979", "1960-1969", "1945-1959", "1940-1944", "1914-1939", "1900-1913", "1891-1899", "1840-1890", "Pre 1840"] }
+      ],
+      "nextAction": { "type": "auto" }
+    },
+    {
+      "step": 9,
+      "name": "Wall Material",
+      "urlFragment": "#!/wall-material",
+      "heading": "What is the main external wall material?",
+      "fields": [
+        { "type": "button-select", "profilePath": "home.wallMaterial", "action": "clickButton", "options": ["Brick Veneer", "Double Brick", "Besser Block / Cement", "Other Cladding", "Stone", "Timber / Weatherboard", "Asbestos", "Non-Asbestos Fibro", "Hebel", "Other Material"] }
+      ],
+      "nextAction": { "type": "auto" }
+    },
+    {
+      "step": 10,
+      "name": "Roof Material",
+      "urlFragment": "#!/roof-material",
+      "heading": "What is the roof material?",
+      "fields": [
+        { "type": "button-select", "profilePath": "home.roofMaterial", "action": "clickButton", "options": ["Cement Tiles", "Clay / Terracotta Tiles", "Colorbond", "Other Metal", "Slate", "Asbestos", "Thatch", "Other"] }
+      ],
+      "nextAction": { "type": "auto" }
+    },
+    {
+      "step": 11,
+      "name": "Start Date",
+      "urlFragment": "#!/start-date",
+      "heading": "When would you like the policy to start?",
+      "fields": [
+        { "type": "calendar", "profilePath": "home.policyStartDate", "action": "clickCalendarDay", "notes": "Custom calendar widget with day buttons. Past dates disabled. Has Previous/Next month nav. Today labelled e.g. '28 (Today)'" }
+      ],
+      "nextAction": { "type": "button", "text": "Next" }
+    },
+    {
+      "step": 12,
+      "name": "Mortgage",
+      "urlFragment": "#!/mortgage",
+      "heading": "Is there a mortgage on the property?",
+      "fields": [
+        { "type": "button-select", "profilePath": "home.hasMortgage", "action": "clickButton", "options": ["Yes", "No"] }
+      ],
+      "nextAction": { "type": "auto" }
+    },
+    {
+      "step": 13,
+      "name": "Home Sum Insured",
+      "urlFragment": "#!/home-sum",
+      "heading": "What is the total cost to rebuild the home at today's prices?",
+      "fields": [
+        { "type": "textbox", "profilePath": "home.buildingSumInsured", "action": "type", "notes": "Numeric input prefixed with $. Has estimating tool link." }
+      ],
+      "nextAction": { "type": "button", "text": "Next" }
+    },
+    {
+      "step": 14,
+      "name": "Security Alarm",
+      "urlFragment": "#!/security-alarm",
+      "heading": "Does the property have a monitored security alarm?",
+      "fields": [
+        { "type": "button-select", "profilePath": "home.securityAlarm", "action": "clickButton", "options": ["Yes", "No"] }
+      ],
+      "nextAction": { "type": "auto" }
+    },
+    {
+      "step": 15,
+      "name": "Contents Sum Insured",
+      "urlFragment": "#!/contents-sum",
+      "heading": "What is the total cost to replace the contents at today's prices?",
+      "fields": [
+        { "type": "textbox", "profilePath": "home.contentsSumInsured", "action": "type", "notes": "Numeric input prefixed with $. Has estimating tool link." }
+      ],
+      "nextAction": { "type": "button", "text": "Next" }
+    },
+    {
+      "step": 16,
+      "name": "Business Activity",
+      "urlFragment": "#!/business-activity",
+      "heading": "Is any business activity conducted at the property?",
+      "fields": [
+        { "type": "button-select", "profilePath": "home.businessActivity", "action": "clickButton", "options": ["Yes", "No"] }
+      ],
+      "nextAction": { "type": "auto" }
+    },
+    {
+      "step": 17,
+      "name": "Date of Birth",
+      "urlFragment": "#!/date-of-birth",
+      "heading": "What is the oldest policy holder's date of birth?",
+      "fields": [
+        { "type": "textbox", "placeholder": "DD", "profilePath": "personal.dateOfBirth.day", "action": "inserttext", "notes": "Must use inserttext (not fill) to trigger Angular change detection" },
+        { "type": "textbox", "placeholder": "MM", "profilePath": "personal.dateOfBirth.month", "action": "inserttext" },
+        { "type": "textbox", "placeholder": "YYYY", "profilePath": "personal.dateOfBirth.year", "action": "inserttext" }
+      ],
+      "nextAction": { "type": "button", "text": "Next" }
+    },
+    {
+      "step": 18,
+      "name": "Claims History",
+      "urlFragment": "#!/claims-history-quote",
+      "heading": "Have you had any home insurance claims in the last 3 years?",
+      "fields": [
+        { "type": "button-select", "profilePath": "home.claimsHistory", "action": "clickButton", "options": ["Yes", "No", "Don't Know"] }
+      ],
+      "nextAction": { "type": "auto" }
+    },
+    {
+      "step": 19,
+      "name": "Retired / Occupancy During Day",
+      "urlFragment": "#!/retired-occupancy",
+      "heading": "Are any of the occupants retired or at home during the day?",
+      "fields": [
+        { "type": "button-select", "profilePath": "home.retiredOrAtHome", "action": "clickButton", "options": ["Yes", "No"] }
+      ],
+      "nextAction": { "type": "auto" }
+    },
+    {
+      "step": 20,
+      "name": "Email Address (optional)",
+      "urlFragment": "#!/email-address",
+      "heading": "What is your email address?",
+      "fields": [
+        { "type": "textbox", "profilePath": "personal.email", "action": "type", "optional": true }
+      ],
+      "nextAction": { "type": "button", "text": "Next", "notes": "Can click Next without entering email" }
+    },
+    {
+      "step": 21,
+      "name": "Contact Information (optional)",
+      "urlFragment": "#!/contact-information",
+      "heading": "Contact Information",
+      "fields": [
+        { "type": "combobox", "placeholder": "Title", "profilePath": "personal.title", "action": "select", "options": ["Mr", "Ms", "Miss", "Mrs", "Father", "Lady", "Madam", "Sir", "Sister"], "optional": true },
+        { "type": "textbox", "placeholder": "First Name", "profilePath": "personal.firstName", "action": "type", "optional": true },
+        { "type": "textbox", "placeholder": "Surname", "profilePath": "personal.lastName", "action": "type", "optional": true },
+        { "type": "textbox", "placeholder": "Best Contact Number", "profilePath": "personal.phone", "action": "type", "optional": true }
+      ],
+      "nextAction": { "type": "button", "text": "Skip", "notes": "Can skip entirely without filling any fields" }
+    },
+    {
+      "step": 22,
+      "name": "Quote Result (price-presentation)",
+      "urlFragment": "#!/price-presentation",
+      "heading": "Your Smart Home & Contents Insurance Quote",
+      "quoteExtraction": {
+        "quoteNumber": "Shown in banner, e.g. 'Quote #N6BD20255'",
+        "premiums": {
+          "monthly": { "heading": "Monthly PAYMENT", "priceHeading": "h2 text e.g. '$336 .88'", "notes": "Shows total annual payment with monthly breakdown" },
+          "yearly": { "heading": "Yearly PAYMENT", "priceHeading": "h2 text e.g. '$3,199 .59'", "defaultSelected": true },
+          "fortnightly": { "heading": "Fortnightly PAYMENT", "priceHeading": "h2 text e.g. '$156 .19'", "notes": "Shows total annual payment with fortnightly breakdown" }
+        },
+        "discount": "30% online discount applied",
+        "excesses": {
+          "home": { "type": "combobox", "label": "Home excess", "options": ["$100", "$200", "$300", "$400", "$500", "$750", "$1,000", "$1,500", "$2,000", "$3,000", "$4,000", "$5,000"] },
+          "contents": { "type": "combobox", "label": "Contents excess", "options": ["$100", "$200", "$300", "$400", "$500", "$750", "$1,000", "$1,500", "$2,000", "$3,000", "$4,000", "$5,000"] },
+          "additional": ["Earthquake or tsunami excess: $500", "Unoccupancy excess: $1,000"]
+        },
+        "optionalCovers": ["Accidental Damage", "Flood", "Motor Burnout", "Sum Insured Safeguard", "Commercial Storage"],
+        "additionalCoversAvailableLater": ["Specified Contents", "Personal Effects"],
+        "quoteValidity": "30 days from quote date"
+      },
+      "nextAction": { "type": "button", "text": "Continue", "notes": "Three Continue buttons — one per payment option (Monthly/Yearly/Fortnightly). Yearly is selected by default." }
+    },
+    {
+      "step": 23,
+      "name": "Immediate Threat",
+      "urlFragment": "#!/immediate-threat",
+      "heading": "Is the home under immediate threat of damage by severe storm, bushfire, grassfire or flood?",
+      "fields": [
+        { "type": "button-select", "profilePath": "home.immediateThreat", "action": "clickButton", "options": ["Yes", "No"] }
+      ],
+      "nextAction": { "type": "auto" }
+    },
+    {
+      "step": 24,
+      "name": "Structurally Sound",
+      "urlFragment": "#!/structurally-sound",
+      "heading": "Is the home structurally sound, well maintained, in good condition and watertight?",
+      "fields": [
+        { "type": "button-select", "profilePath": "home.structurallySound", "action": "clickButton", "options": ["Yes", "No"] }
+      ],
+      "nextAction": { "type": "auto" }
+    },
+    {
+      "step": 25,
+      "name": "Shared with Non-Family",
+      "urlFragment": "#!/unrelated",
+      "heading": "Is the home shared with anyone other than your family?",
+      "fields": [
+        { "type": "button-select", "profilePath": "home.sharedWithNonFamily", "action": "clickButton", "options": ["Yes", "No"] }
+      ],
+      "nextAction": { "type": "auto" }
+    },
+    {
+      "step": 26,
+      "name": "Currently Unoccupied",
+      "urlFragment": "#!/unoccupied",
+      "heading": "Is the home currently unoccupied?",
+      "fields": [
+        { "type": "button-select", "profilePath": "home.currentlyUnoccupied", "action": "clickButton", "options": ["Yes", "No"] }
+      ],
+      "nextAction": { "type": "auto" }
+    },
+    {
+      "step": 27,
+      "name": "Occupancy Date",
+      "urlFragment": "#!/occupancy-date",
+      "heading": "On what date will the home be occupied?",
+      "fields": [
+        { "type": "textbox", "placeholder": "DD", "profilePath": "home.occupancyDate.day", "action": "inserttext" },
+        { "type": "textbox", "placeholder": "MM", "profilePath": "home.occupancyDate.month", "action": "inserttext" },
+        { "type": "textbox", "placeholder": "YYYY", "profilePath": "home.occupancyDate.year", "action": "inserttext" }
+      ],
+      "nextAction": { "type": "button", "text": "Next" },
+      "notes": "May require JS-based value setting with dispatchEvent for Angular change detection"
+    },
+    {
+      "step": 28,
+      "name": "Door Security",
+      "urlFragment": "#!/secured-doors",
+      "heading": "Door Security",
+      "description": "Are ALL external doors secured with deadlocks, smart/biometric deadlocks, patio bolts, key operated sliding and/or triple locked security doors?",
+      "fields": [
+        { "type": "button-select", "profilePath": "home.doorSecurity", "action": "clickButton", "options": ["Yes", "No"] }
+      ],
+      "nextAction": { "type": "auto" }
+    },
+    {
+      "step": 29,
+      "name": "Window Security",
+      "urlFragment": "#!/secured-windows",
+      "heading": "Window Security",
+      "description": "Are ALL ground/first floor windows fitted with key operated window locks, security screens/bars/grills?",
+      "fields": [
+        { "type": "button-select", "profilePath": "home.windowSecurity", "action": "clickButton", "options": ["Yes", "No"] }
+      ],
+      "nextAction": { "type": "auto" }
+    },
+    {
+      "step": 30,
+      "name": "Renovation / Construction",
+      "urlFragment": "#!/undergoing-renovation",
+      "heading": "Is the home being constructed, or undergoing renovation, alteration, extension or being demolished?",
+      "fields": [
+        { "type": "button-select", "profilePath": "home.undergoingRenovation", "action": "clickButton", "options": ["Yes", "No"] }
+      ],
+      "nextAction": { "type": "auto" }
+    },
+    {
+      "step": 31,
+      "name": "Insurance History",
+      "urlFragment": "#!/insurance-history",
+      "heading": "Have you held insurance for [ADDRESS] in the last 7 days?",
+      "fields": [
+        { "type": "button-select", "profilePath": "home.recentInsurance", "action": "clickButton", "options": ["Yes", "No"] }
+      ],
+      "nextAction": { "type": "auto" }
+    },
+    {
+      "step": 32,
+      "name": "Policy Expiry Date (conditional — only if Yes to insurance history)",
+      "urlFragment": "#!/policy-expiry-date",
+      "heading": "What is the expiry date of your policy?",
+      "fields": [
+        { "type": "textbox", "placeholder": "DD", "profilePath": "home.policyExpiryDate.day", "action": "inserttext" },
+        { "type": "textbox", "placeholder": "MM", "profilePath": "home.policyExpiryDate.month", "action": "inserttext" },
+        { "type": "textbox", "placeholder": "YYYY", "profilePath": "home.policyExpiryDate.year", "action": "inserttext" }
+      ],
+      "nextAction": { "type": "button", "text": "Next" },
+      "notes": "May require JS-based value setting with dispatchEvent for Angular change detection"
+    },
+    {
+      "step": 33,
+      "name": "Cancelled Insurance",
+      "urlFragment": "#!/cancelled-insurance",
+      "heading": "In the last 5 years has any policy holder or household member had an insurance company cancel or refuse to renew insurance?",
+      "fields": [
+        { "type": "button-select", "profilePath": "home.cancelledInsurance", "action": "clickButton", "options": ["Yes", "No"] }
+      ],
+      "nextAction": { "type": "auto" }
+    },
+    {
+      "step": 34,
+      "name": "Criminal Offences",
+      "urlFragment": "#!/criminal-offences",
+      "heading": "Has any policy holder or household member ever been convicted of a criminal offence?",
+      "fields": [
+        { "type": "button-select", "profilePath": "home.criminalOffences", "action": "clickButton", "options": ["Yes", "No"] }
+      ],
+      "nextAction": { "type": "auto" }
+    },
+    {
+      "step": 35,
+      "name": "Personal Effects (optional)",
+      "urlFragment": "#!/personal-effects",
+      "heading": "Would you like to add cover for items you take away from your home?",
+      "fields": [
+        { "type": "combobox", "label": "Unspecified personal effects total cover", "profilePath": "home.unspecifiedPersonalEffects", "action": "select", "options": ["No Cover", "$1,000", "$2,000", "$3,000", "$4,000", "$5,000"], "optional": true },
+        { "type": "button", "text": "Add items", "profilePath": "home.specifiedPersonalEffects", "action": "click", "optional": true, "notes": "Opens form to add specified items worth $300+" }
+      ],
+      "nextAction": { "type": "button", "text": "Skip", "notes": "Can skip entirely" }
+    },
+    {
+      "step": 36,
+      "name": "Specified Contents",
+      "urlFragment": "#!/specified-contents",
+      "heading": "Would you like to add specific items for more than these limits?",
+      "fields": [
+        { "type": "button-select", "profilePath": "home.specifiedContents", "action": "clickButton", "options": ["Yes", "No"] }
+      ],
+      "nextAction": { "type": "auto" }
+    },
+    {
+      "step": 37,
+      "name": "Flood Cover",
+      "urlFragment": "#!/flood-cover",
+      "heading": "Do you want to add Flood cover?",
+      "fields": [
+        { "type": "button-select", "profilePath": "home.floodCover", "action": "clickButton", "options": ["Yes", "No"] }
+      ],
+      "nextAction": { "type": "auto", "notes": "If No is selected, an 'I agree & continue' confirmation button appears" }
+    },
+    {
+      "step": 38,
+      "name": "Final Price",
+      "urlFragment": "#!/final-price",
+      "heading": "Your Price",
+      "quoteExtraction": {
+        "price": "h2 text e.g. '$3,199.59'",
+        "paymentFrequency": { "type": "combobox", "options": ["Monthly", "Yearly", "Fortnightly"] },
+        "buyButton": { "type": "button", "text": "Buy Now" },
+        "adjustableExcesses": {
+          "home": { "type": "combobox", "label": "Home:", "options": ["$100", "$200", "$300", "$400", "$500", "$750", "$1,000", "$1,500", "$2,000", "$3,000", "$4,000", "$5,000"] },
+          "contents": { "type": "combobox", "label": "Contents:", "options": ["$100", "$200", "$300", "$400", "$500", "$750", "$1,000", "$1,500", "$2,000", "$3,000", "$4,000", "$5,000"] }
+        },
+        "coverOptions": "Editable summary of all selected options with Edit links back to individual steps"
+      }
+    }
+  ]
+}
