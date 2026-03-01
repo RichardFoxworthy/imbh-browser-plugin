@@ -135,3 +135,62 @@ export function detectCaptcha(): boolean {
 export function detectQuotePage(quoteSelectors: string[]): boolean {
   return quoteSelectors.some((sel) => document.querySelector(sel) !== null);
 }
+
+/** Common selectors for modal/popup close buttons. */
+const MODAL_CLOSE_SELECTORS = [
+  // ng-bootstrap (Budget Direct, etc.)
+  'ngb-modal-window .modal__header button',
+  'ngb-modal-window .modal-header button',
+  'ngb-modal-window button.close',
+  // Bootstrap generic
+  '.modal .close',
+  '.modal [aria-label="Close"]',
+  '.modal button.close',
+  '.modal-header .close',
+  'button.modal-close',
+  // Class-based patterns
+  '[class*="modal"] [class*="close"]',
+  '[class*="modal"] button[aria-label="Close"]',
+  '[class*="popup"] [class*="close"]',
+  '[class*="overlay"] [class*="close"]',
+  '[class*="dialog"] [class*="close"]',
+  // Generic dialog close buttons
+  '[role="dialog"] button',
+];
+
+/**
+ * Dismiss any visible modal/popup overlays that might block form interaction.
+ * Returns true if a modal was dismissed.
+ */
+export function dismissModals(): boolean {
+  let dismissed = false;
+
+  for (const sel of MODAL_CLOSE_SELECTORS) {
+    const buttons = document.querySelectorAll(sel);
+    for (const btn of buttons) {
+      const el = btn as HTMLElement;
+      if (!isVisible(el)) continue;
+
+      const text = (el.textContent || '').trim();
+      // Click buttons that look like close/dismiss (×, X, Close, or empty icon buttons)
+      if (text === '×' || text === 'X' || text === '' || text.toLowerCase() === 'close'
+        || text.toLowerCase().includes('dismiss') || text.toLowerCase().includes('no thanks')) {
+        el.click();
+        dismissed = true;
+      }
+    }
+  }
+
+  // Also try clicking backdrop/overlay elements that close on click
+  const backdrops = document.querySelectorAll('.modal-backdrop, [class*="backdrop"], [class*="overlay"]');
+  for (const backdrop of backdrops) {
+    const el = backdrop as HTMLElement;
+    const style = window.getComputedStyle(el);
+    if (style.position === 'fixed' && style.display !== 'none') {
+      // Don't click backdrops — some sites close modal on backdrop click but
+      // others navigate away. Only click explicit close buttons above.
+    }
+  }
+
+  return dismissed;
+}

@@ -17,7 +17,7 @@
  */
 
 import { findField, fillField } from './field-matcher';
-import { clickNext, waitForPageTransition, detectCaptcha } from './page-navigator';
+import { clickNext, waitForPageTransition, detectCaptcha, dismissModals } from './page-navigator';
 import { waitForElement, waitForPageStable } from './dom-observer';
 import { resolvePath, randomDelay, uid } from '../shared/utils';
 import { showAssistOverlay, hideAssistOverlay } from './assist-overlay';
@@ -311,6 +311,12 @@ export async function executeHybridSteps(
 
     // 1. Wait for page to stabilise
     await waitForPageStable(800);
+
+    // 1b. Dismiss any modal/popup overlays blocking the form
+    if (dismissModals()) {
+      addLog('modal', 'Dismissed blocking modal/popup', true);
+      await waitForPageStable(500);
+    }
 
     // 2. Check for CAPTCHA
     if (detectCaptcha()) {
@@ -622,6 +628,12 @@ async function executeSequentialSteps(
     // AUTO mode: fill fields
     // ------------------------------------------------------------------
     await waitForPageStable(800);
+
+    // Dismiss any modal/popup overlays blocking the form
+    if (dismissModals()) {
+      addLog('modal', 'Dismissed blocking modal/popup', true);
+      await waitForPageStable(500);
+    }
 
     // Check for CAPTCHA
     if (detectCaptcha()) {
