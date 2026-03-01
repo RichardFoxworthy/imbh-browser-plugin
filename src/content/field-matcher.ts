@@ -204,13 +204,38 @@ function setCheckbox(input: HTMLInputElement, checked: boolean): boolean {
 /**
  * Type a value into an autocomplete field, wait for suggestions, and select the first match.
  * Used for address lookup fields.
+ *
+ * Unlike typeValue, this does NOT dispatch blur/change after typing, because
+ * blur closes autocomplete dropdowns before we can select a suggestion.
+ * Instead, we type character by character, wait for the dropdown to appear,
+ * and click the first matching suggestion.
  */
 async function typeAndSelect(input: HTMLInputElement, value: string): Promise<boolean> {
-  await typeValue(input, value);
-  // Wait for autocomplete suggestions
-  await randomDelay(1500, 3000);
+  // Clear existing value
+  input.focus();
+  input.value = '';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  await randomDelay(200, 400);
 
-  // Look for suggestion dropdown — try multiple common patterns
+  // Type character by character — triggers the autocomplete/typeahead
+  input.select();
+  const useInsertText = document.queryCommandSupported?.('insertText') !== false;
+  for (const char of value) {
+    if (useInsertText) {
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true }));
+      document.execCommand('insertText', false, char);
+      input.dispatchEvent(new KeyboardEvent('keyup', { key: char, bubbles: true }));
+    } else {
+      input.value += char;
+      input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: char }));
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true }));
+      input.dispatchEvent(new KeyboardEvent('keyup', { key: char, bubbles: true }));
+    }
+    await randomDelay(80, 180);
+  }
+  // Do NOT dispatch blur/change — that would close the autocomplete dropdown
+
+  // Wait for autocomplete suggestions to appear
   const suggestionSelectors = [
     // UI Bootstrap typeahead (AngularJS) — used by Budget Direct etc.
     'ul.dropdown-menu li a',
@@ -233,16 +258,26 @@ async function typeAndSelect(input: HTMLInputElement, value: string): Promise<bo
     '.list-group-item',
   ];
 
-  for (const sel of suggestionSelectors) {
-    const suggestions = document.querySelectorAll(sel);
-    if (suggestions.length > 0) {
-      (suggestions[0] as HTMLElement).click();
-      await randomDelay(500, 1000);
-      return true;
+  // Poll for suggestions (the API call may take a moment)
+  const maxWait = 5000;
+  const pollInterval = 300;
+  const startTime = Date.now();
+
+  while (Date.now() - startTime < maxWait) {
+    for (const sel of suggestionSelectors) {
+      const suggestions = document.querySelectorAll(sel);
+      if (suggestions.length > 0) {
+        // Brief delay so the dropdown is fully rendered
+        await randomDelay(200, 400);
+        (suggestions[0] as HTMLElement).click();
+        await randomDelay(500, 1000);
+        return true;
+      }
     }
+    await new Promise((r) => setTimeout(r, pollInterval));
   }
 
-  // Try pressing ArrowDown + Enter as fallback (common autocomplete pattern)
+  // Fallback: try ArrowDown + Enter (common autocomplete pattern)
   input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
   await randomDelay(200, 400);
   input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));

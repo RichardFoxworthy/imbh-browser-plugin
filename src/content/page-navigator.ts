@@ -176,8 +176,30 @@ const MODAL_CLOSE_SELECTORS = [
   '[role="dialog"] button',
 ];
 
+/** Keywords in class/id/text that indicate a live chat or contact widget (not a blocking modal). */
+const CHAT_WIDGET_PATTERNS = [
+  'chat', 'livechat', 'live-chat', 'contact-us', 'contactus',
+  'intercom', 'zendesk', 'drift', 'hubspot', 'crisp', 'tawk',
+  'freshchat', 'olark', 'helpshift', 'genesys', 'salesforce-chat',
+];
+
+/** Check if an element or its ancestors look like a chat/contact widget. */
+function isChatWidget(el: Element): boolean {
+  let node: Element | null = el;
+  while (node) {
+    const cls = (node.getAttribute('class') || '').toLowerCase();
+    const id = (node.getAttribute('id') || '').toLowerCase();
+    if (CHAT_WIDGET_PATTERNS.some((p) => cls.includes(p) || id.includes(p))) {
+      return true;
+    }
+    node = node.parentElement;
+  }
+  return false;
+}
+
 /**
  * Dismiss any visible modal/popup overlays that might block form interaction.
+ * Skips live chat / contact-us widgets that aren't blocking the form.
  * Returns true if a modal was dismissed.
  */
 export function dismissModals(): boolean {
@@ -189,6 +211,9 @@ export function dismissModals(): boolean {
       const el = btn as HTMLElement;
       if (!isVisible(el)) continue;
 
+      // Skip chat/contact widgets — these aren't blocking modals
+      if (isChatWidget(el)) continue;
+
       const text = (el.textContent || '').trim();
       // Click buttons that look like close/dismiss (×, X, Close, or empty icon buttons)
       if (text === '×' || text === 'X' || text === '' || text.toLowerCase() === 'close'
@@ -196,17 +221,6 @@ export function dismissModals(): boolean {
         el.click();
         dismissed = true;
       }
-    }
-  }
-
-  // Also try clicking backdrop/overlay elements that close on click
-  const backdrops = document.querySelectorAll('.modal-backdrop, [class*="backdrop"], [class*="overlay"]');
-  for (const backdrop of backdrops) {
-    const el = backdrop as HTMLElement;
-    const style = window.getComputedStyle(el);
-    if (style.position === 'fixed' && style.display !== 'none') {
-      // Don't click backdrops — some sites close modal on backdrop click but
-      // others navigate away. Only click explicit close buttons above.
     }
   }
 
