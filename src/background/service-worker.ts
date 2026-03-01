@@ -183,8 +183,26 @@ async function handleStartQuoteRun(message: {
     return { success: false, error: 'No valid adapters selected' };
   }
 
-  // Start the quote run
-  currentRun = await runQuotes(adaptersForRunner, profile, productType, {
+  // Initialise the run state immediately so the UI can transition
+  const runId = `run-${Date.now()}`;
+  currentRun = {
+    id: runId,
+    items: adaptersForRunner.map((a: any) => ({
+      adapterId: a.id,
+      adapterName: a.name,
+      provider: a.provider,
+      status: 'pending' as const,
+      progress: 0,
+      message: 'Waiting...',
+      result: null,
+    })),
+    startedAt: new Date().toISOString(),
+    productType,
+  };
+
+  // Start the quote run in the background — don't await so sendResponse
+  // returns immediately and the popup can transition to the progress view
+  runQuotes(adaptersForRunner, profile, productType, {
     onItemUpdate(item: QuoteRunItem) {
       broadcastMessage({
         type: 'QUOTE_ITEM_UPDATE',
@@ -202,9 +220,11 @@ async function handleStartQuoteRun(message: {
         run,
       });
     },
+  }).catch((err) => {
+    console.error('[service-worker] Quote run failed:', err);
   });
 
-  return { success: true, runId: currentRun.id };
+  return { success: true, runId };
 }
 
 function handleAutomationProgress(progress: any) {
