@@ -818,20 +818,24 @@
   ],
   "extractionRules": {
     "premiumSelectors": [
-      "h2",
       "[class*='price'] h2",
       "[class*='premium']",
-      "[class*='total']"
+      "[class*='total'] h2",
+      "[class*='price-display']",
+      "[class*='quote-result']",
+      "[data-test-id*='premium']",
+      "[data-test-id*='price']"
     ],
     "excessSelectors": [
-      "select",
       "[class*='excess']",
-      "[aria-label*='excess']"
+      "[aria-label*='excess']",
+      "[data-test-id*='excess']"
     ],
     "inclusionSelectors": [
-      "li",
       "[class*='cover'] li",
-      "[class*='inclusion'] li"
+      "[class*='inclusion'] li",
+      "[class*='feature'] li",
+      "[class*='benefit'] li"
     ],
     "exclusionSelectors": [],
     "confidence": 0.3,

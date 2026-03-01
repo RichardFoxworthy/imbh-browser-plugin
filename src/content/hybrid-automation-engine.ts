@@ -334,8 +334,9 @@ export async function executeHybridSteps(
       continue;
     }
 
-    // 3. Try to extract quote — we might already be on the results page
-    const quote = extractQuote(document);
+    // 3. Try to extract quote — but only after at least one step has been completed,
+    //    otherwise we'll pick up stray dollar amounts on form pages
+    const quote = completedStepIds.size > 0 ? extractQuote(document) : null;
     if (quote) {
       addLog('extract', `Quote extracted: $${quote.premium.annual}/year`, true);
       emitProgress(completedStepIds.size, 'Complete', 'completed',
