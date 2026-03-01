@@ -116,6 +116,24 @@ export async function waitForPageTransition(timeout: number = 15000): Promise<vo
  * Detect CAPTCHA challenges on the current page.
  */
 export function detectCaptcha(): boolean {
+  // Cloudflare Turnstile: check the response input FIRST. The container
+  // elements (.cf-turnstile, [data-sitekey], iframes) persist in the DOM
+  // even after the challenge is solved. The response input having a value
+  // is the definitive signal that the challenge is complete.
+  const turnstileResponse = document.querySelector<HTMLInputElement>(
+    'input[name="cf-turnstile-response"]'
+  );
+  if (turnstileResponse) {
+    // Input exists: challenge is active only if the response is empty
+    return !turnstileResponse.value;
+  }
+
+  // Cloudflare managed challenge page (full-page interstitial)
+  if (document.querySelector('#challenge-running') || document.querySelector('#challenge-stage')) {
+    return true;
+  }
+
+  // Other CAPTCHA providers
   const captchaSelectors = [
     'iframe[src*="recaptcha"]',
     'iframe[src*="hcaptcha"]',
@@ -124,32 +142,9 @@ export function detectCaptcha(): boolean {
     '#captcha',
     '[data-captcha]',
     'iframe[title*="challenge"]',
-    // Cloudflare Turnstile (visible containers)
-    'iframe[src*="challenges.cloudflare.com"]',
-    'iframe[src*="turnstile"]',
-    '.cf-turnstile',
-    '[data-sitekey]',
-    '[class*="turnstile"]',
-    '[id*="turnstile"]',
-    // Cloudflare managed challenge page
-    '#challenge-running',
-    '#challenge-stage',
   ];
 
-  if (captchaSelectors.some((sel) => document.querySelector(sel) !== null)) {
-    return true;
-  }
-
-  // Cloudflare Turnstile with closed shadow DOM — detect via hidden response
-  // inputs in the main DOM. Challenge is active when the response is empty.
-  const turnstileResponse = document.querySelector<HTMLInputElement>(
-    'input[name="cf-turnstile-response"]'
-  );
-  if (turnstileResponse && !turnstileResponse.value) {
-    return true;
-  }
-
-  return false;
+  return captchaSelectors.some((sel) => document.querySelector(sel) !== null);
 }
 
 /**
