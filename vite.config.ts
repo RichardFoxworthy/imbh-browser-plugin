@@ -4,6 +4,29 @@ import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
 import tailwindcss from '@tailwindcss/vite';
+import { buildSync } from 'esbuild';
+import { writeFileSync } from 'fs';
+
+// Plugin to build content script as a self-contained IIFE (no imports)
+function contentScriptPlugin() {
+  return {
+    name: 'content-script-iife',
+    writeBundle() {
+      const result = buildSync({
+        entryPoints: [resolve(__dirname, 'src/content/content-script.ts')],
+        bundle: true,
+        format: 'iife',
+        outfile: resolve(__dirname, 'dist/content.js'),
+        minify: true,
+        target: 'chrome110',
+        tsconfig: resolve(__dirname, 'tsconfig.json'),
+      });
+      if (result.errors.length > 0) {
+        console.error('Content script build errors:', result.errors);
+      }
+    },
+  };
+}
 
 export default defineConfig({
   test: {
@@ -19,6 +42,7 @@ export default defineConfig({
         { src: 'public/icons/*', dest: 'icons' },
       ],
     }),
+    contentScriptPlugin(),
   ],
   resolve: {
     alias: {
@@ -33,7 +57,6 @@ export default defineConfig({
         popup: resolve(__dirname, 'popup.html'),
         sidepanel: resolve(__dirname, 'sidepanel.html'),
         'service-worker': resolve(__dirname, 'src/background/service-worker.ts'),
-        content: resolve(__dirname, 'src/content/content-script.ts'),
       },
       output: {
         entryFileNames: '[name].js',
