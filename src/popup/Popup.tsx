@@ -40,15 +40,22 @@ export function Popup() {
         setView('profile');
       }
     } catch {
-      // Wrong passphrase or no profile
+      // No existing profile — initialise the store with this passphrase for first save
+      await profileStore.initWithPassphrase(passphrase);
+      setIsUnlocked(true);
       setView('profile');
     }
   }
 
   async function handleProfileSave(newProfile: UserProfile) {
-    setProfile(newProfile);
-    await profileStore.saveProfile(newProfile);
-    setView('providers');
+    try {
+      await profileStore.saveProfile(newProfile);
+      setProfile(newProfile);
+      setView('providers');
+    } catch (err) {
+      console.error('Failed to save profile:', err);
+      alert('Failed to save profile. Please try again.');
+    }
   }
 
   function handleStartQuoting() {
