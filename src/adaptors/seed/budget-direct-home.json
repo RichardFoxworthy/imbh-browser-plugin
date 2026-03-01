@@ -27,19 +27,19 @@
       "id": "address",
       "name": "Property Address",
       "urlPattern": "#!/address",
-      "waitForSelector": "input[placeholder*='ostcode'], input[placeholder*='ddress']",
-      "fallbackWaitSelectors": ["input[type='text']", "form input"],
+      "waitForSelector": "[data-test-id='postcode-input']",
+      "fallbackWaitSelectors": ["#postcode", "input[name='postcode']"],
       "fields": [
         {
-          "selector": "input[placeholder*='ostcode']",
-          "fallbackSelectors": ["input[type='text']:first-of-type"],
+          "selector": "[data-test-id='postcode-input']",
+          "fallbackSelectors": ["#postcode", "input[name='postcode']"],
           "labelMatch": "postcode",
           "profilePath": "personal.currentAddress.postcode",
           "action": "type"
         },
         {
-          "selector": "input[placeholder*='ddress']",
-          "fallbackSelectors": ["input[type='text']:nth-of-type(2)"],
+          "selector": "[data-test-id='address-input']",
+          "fallbackSelectors": ["input[name='address']", "#address"],
           "labelMatch": "address",
           "profilePath": "personal.currentAddress",
           "action": "typeAndSelect",

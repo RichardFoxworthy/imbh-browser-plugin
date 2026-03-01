@@ -114,12 +114,29 @@ async function typeValue(input: HTMLInputElement, value: string): Promise<boolea
   input.value = '';
   input.dispatchEvent(new Event('input', { bubbles: true }));
 
-  for (const char of value) {
-    input.value += char;
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    input.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true }));
-    input.dispatchEvent(new KeyboardEvent('keyup', { key: char, bubbles: true }));
-    await randomDelay(50, 150);
+  // Try insertText command first — works with Angular, React, and other
+  // frameworks that listen on InputEvent rather than raw value changes.
+  input.focus();
+  const useInsertText = document.queryCommandSupported?.('insertText') !== false;
+
+  if (useInsertText) {
+    // Select all existing content then replace via insertText
+    input.select();
+    for (const char of value) {
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true }));
+      document.execCommand('insertText', false, char);
+      input.dispatchEvent(new KeyboardEvent('keyup', { key: char, bubbles: true }));
+      await randomDelay(50, 150);
+    }
+  } else {
+    // Fallback: direct value assignment with events
+    for (const char of value) {
+      input.value += char;
+      input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: char }));
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true }));
+      input.dispatchEvent(new KeyboardEvent('keyup', { key: char, bubbles: true }));
+      await randomDelay(50, 150);
+    }
   }
 
   input.dispatchEvent(new Event('change', { bubbles: true }));
@@ -193,18 +210,34 @@ async function typeAndSelect(input: HTMLInputElement, value: string): Promise<bo
   // Wait for autocomplete suggestions
   await randomDelay(1500, 3000);
 
-  // Look for suggestion dropdown
-  const suggestions = document.querySelectorAll(
-    '[role="option"], [role="listbox"] li, .autocomplete-suggestion, .suggestion-item, .pac-item'
-  );
+  // Look for suggestion dropdown — try multiple common patterns
+  const suggestionSelectors = [
+    '[role="option"]',
+    '[role="listbox"] li',
+    '.autocomplete-suggestion',
+    '.suggestion-item',
+    '.pac-item',
+    // Angular Material / CDK
+    'mat-option',
+    '.mat-option',
+    '.cdk-overlay-pane li',
+    // Generic dropdown items near the input
+    '.dropdown-item',
+    '.list-group-item',
+  ];
 
-  if (suggestions.length > 0) {
-    (suggestions[0] as HTMLElement).click();
-    await randomDelay(500, 1000);
-    return true;
+  for (const sel of suggestionSelectors) {
+    const suggestions = document.querySelectorAll(sel);
+    if (suggestions.length > 0) {
+      (suggestions[0] as HTMLElement).click();
+      await randomDelay(500, 1000);
+      return true;
+    }
   }
 
-  // Try pressing Enter as fallback
+  // Try pressing ArrowDown + Enter as fallback (common autocomplete pattern)
+  input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+  await randomDelay(200, 400);
   input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
   await randomDelay(500, 1000);
   return true;
