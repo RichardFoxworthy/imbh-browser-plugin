@@ -4,7 +4,7 @@ import { Input } from '../shared/ui/Input';
 
 interface Props {
   onComplete: () => void;
-  onUnlock: (passphrase: string) => void;
+  onUnlock: (passphrase: string) => Promise<void>;
 }
 
 export function Onboarding({ onComplete, onUnlock }: Props) {
@@ -13,7 +13,7 @@ export function Onboarding({ onComplete, onUnlock }: Props) {
   const [confirmPassphrase, setConfirmPassphrase] = useState('');
   const [error, setError] = useState('');
 
-  function handleSetPassphrase() {
+  async function handleSetPassphrase() {
     if (passphrase.length < 8) {
       setError('Passphrase must be at least 8 characters');
       return;
@@ -22,7 +22,7 @@ export function Onboarding({ onComplete, onUnlock }: Props) {
       setError('Passphrases do not match');
       return;
     }
-    onUnlock(passphrase);
+    await onUnlock(passphrase);
     onComplete();
   }
 

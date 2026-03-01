@@ -48,13 +48,18 @@ export function Popup() {
   }
 
   async function handleProfileSave(newProfile: UserProfile) {
+    if (!profileStore.isUnlocked()) {
+      alert('Profile store is locked. Please restart the extension and enter your passphrase.');
+      return;
+    }
     try {
       await profileStore.saveProfile(newProfile);
       setProfile(newProfile);
       setView('providers');
     } catch (err) {
       console.error('Failed to save profile:', err);
-      alert('Failed to save profile. Please try again.');
+      const msg = err instanceof Error ? err.message : String(err);
+      alert(`Failed to save profile: ${msg}`);
     }
   }
 
