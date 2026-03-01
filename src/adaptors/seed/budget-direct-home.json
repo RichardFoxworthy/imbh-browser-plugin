@@ -4,14 +4,14 @@
   "provider": "Budget Direct",
   "productType": "home-and-contents",
   "logoUrl": "",
-  "startUrl": "https://www.budgetdirect.com.au/home-insurance/get-quote.html",
+  "startUrl": "https://www.budgetdirect.com.au/start/home-contents.html",
   "enabled": true,
   "updatedAt": "2026-02-28T00:00:00.000Z",
   "steps": [
     {
       "id": "address",
       "name": "Property Address",
-      "urlPattern": "budgetdirect\\.com\\.au.*get-quote",
+      "urlPattern": "budgetdirect\\.com\\.au.*(start/home-contents|home-insurance)",
       "waitForSelector": "[data-step=\"address\"], #address-search, input[name*=\"address\"]",
       "fallbackWaitSelectors": [
         "input[placeholder*=\"address\"]",
