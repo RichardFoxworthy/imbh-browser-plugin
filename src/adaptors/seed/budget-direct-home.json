@@ -43,7 +43,7 @@
           "labelMatch": "address",
           "profilePath": "personal.currentAddress",
           "action": "typeAndSelect",
-          "transform": { "type": "address", "format": "full" }
+          "transform": { "type": "address", "format": "street" }
         }
       ],
       "nextAction": { "selector": "button", "text": "Next", "action": "click" },

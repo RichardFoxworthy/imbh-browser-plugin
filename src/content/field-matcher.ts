@@ -212,16 +212,23 @@ async function typeAndSelect(input: HTMLInputElement, value: string): Promise<bo
 
   // Look for suggestion dropdown — try multiple common patterns
   const suggestionSelectors = [
+    // UI Bootstrap typeahead (AngularJS) — used by Budget Direct etc.
+    'ul.dropdown-menu li a',
+    'ul.dropdown-menu li',
+    '[uib-typeahead-match] a',
+    '[id*="typeahead"] li a',
+    '[id*="typeahead"] li',
+    // Standard ARIA patterns
     '[role="option"]',
     '[role="listbox"] li',
-    '.autocomplete-suggestion',
-    '.suggestion-item',
-    '.pac-item',
     // Angular Material / CDK
     'mat-option',
     '.mat-option',
     '.cdk-overlay-pane li',
-    // Generic dropdown items near the input
+    // Generic patterns
+    '.autocomplete-suggestion',
+    '.suggestion-item',
+    '.pac-item',
     '.dropdown-item',
     '.list-group-item',
   ];
