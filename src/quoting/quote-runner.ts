@@ -83,28 +83,28 @@ export async function runQuotes(
       // Get the adapter's steps
       const steps = adapter.getSteps(profile);
 
-      // Route to the appropriate automation engine
-      let result: any;
+      // Build the automation message
+      const automationMessage = adapter._isJsonAdaptor
+        ? {
+            type: 'START_HYBRID_AUTOMATION' as const,
+            adaptorId: adapter.id,
+            adaptorName: adapter._adaptorName || adapter.provider,
+            steps,
+            extractionRules: adapter._extractionRules,
+            profile,
+          }
+        : {
+            type: 'START_AUTOMATION' as const,
+            adapterId: adapter.id,
+            steps: serializeSteps(steps),
+            profile,
+          };
 
-      if (adapter._isJsonAdaptor) {
-        // JSON adaptor → hybrid engine (auto/assist mode)
-        result = await chrome.tabs.sendMessage(tab.id, {
-          type: 'START_HYBRID_AUTOMATION',
-          adaptorId: adapter.id,
-          adaptorName: adapter._adaptorName || adapter.provider,
-          steps,
-          extractionRules: adapter._extractionRules,
-          profile,
-        });
-      } else {
-        // Legacy adapter → original engine
-        result = await chrome.tabs.sendMessage(tab.id, {
-          type: 'START_AUTOMATION',
-          adapterId: adapter.id,
-          steps: serializeSteps(steps),
-          profile,
-        });
-      }
+      // Send automation message with Cloudflare challenge recovery.
+      // If the content script context is destroyed by a full-page navigation
+      // (e.g. Cloudflare challenge → actual site), we detect the navigation
+      // and re-send the message to the new page.
+      const result = await sendWithChallengeRecovery(tab.id, automationMessage);
 
       if (result.success && result.quote) {
         item.status = 'completed';
@@ -148,12 +148,12 @@ export async function runQuotes(
 }
 
 /** Wait for a tab to finish loading. */
-function waitForTabLoad(tabId: number): Promise<void> {
+function waitForTabLoad(tabId: number, timeoutMs = 30000): Promise<void> {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
       chrome.tabs.onUpdated.removeListener(listener);
       reject(new Error('Tab load timeout'));
-    }, 30000);
+    }, timeoutMs);
 
     function listener(
       updatedTabId: number,
@@ -168,6 +168,104 @@ function waitForTabLoad(tabId: number): Promise<void> {
     }
 
     chrome.tabs.onUpdated.addListener(listener);
+  });
+}
+
+/**
+ * Send the automation message to a tab's content script, recovering from
+ * Cloudflare challenge navigations.
+ *
+ * Cloudflare managed challenges display a full-page interstitial. When the
+ * user solves it, the browser navigates to a new URL which destroys the
+ * content script context. The original sendMessage promise rejects (or the
+ * content script's response is lost). We detect this by racing the
+ * sendMessage against a tab navigation listener. On navigation, we wait
+ * for the new page to load and re-send the automation message.
+ */
+async function sendWithChallengeRecovery(
+  tabId: number,
+  message: any,
+  maxRetries = 3
+): Promise<any> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const result = await raceMessageWithNavigation(tabId, message);
+      if (result.navigated) {
+        // Content script context was destroyed by navigation (likely
+        // Cloudflare challenge resolved). Wait for the new page, then retry.
+        await waitForTabLoad(tabId, 60000);
+        continue;
+      }
+      return result.response;
+    } catch (err) {
+      // sendMessage can fail if the content script context was destroyed
+      // mid-flight (e.g. Cloudflare navigation). Wait for the tab to
+      // settle and retry.
+      const isContextDestroyed =
+        err instanceof Error &&
+        (err.message.includes('Receiving end does not exist') ||
+          err.message.includes('message port closed') ||
+          err.message.includes('Could not establish connection'));
+
+      if (isContextDestroyed && attempt < maxRetries) {
+        await waitForTabLoad(tabId, 60000).catch(() => {});
+        // Extra wait for content script to initialise
+        await new Promise((r) => setTimeout(r, 2000));
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  throw new Error('Automation message failed after challenge recovery retries');
+}
+
+/**
+ * Race sendMessage against a tab navigation event.
+ * Returns { navigated: true } if the tab navigated before the message
+ * got a response, or { navigated: false, response } if it succeeded.
+ */
+function raceMessageWithNavigation(
+  tabId: number,
+  message: any
+): Promise<{ navigated: true } | { navigated: false; response: any }> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+
+    // Listen for the tab navigating to a new URL (full page navigation).
+    // changeInfo.url is only present when the URL actually changes,
+    // making it a reliable signal for Cloudflare challenge resolution.
+    function onUpdated(
+      updatedTabId: number,
+      changeInfo: { status?: string; url?: string }
+    ) {
+      if (updatedTabId !== tabId || settled) return;
+
+      if (changeInfo.url) {
+        settled = true;
+        chrome.tabs.onUpdated.removeListener(onUpdated);
+        resolve({ navigated: true });
+      }
+    }
+
+    chrome.tabs.onUpdated.addListener(onUpdated);
+
+    chrome.tabs.sendMessage(tabId, message).then(
+      (response) => {
+        if (!settled) {
+          settled = true;
+          chrome.tabs.onUpdated.removeListener(onUpdated);
+          resolve({ navigated: false, response });
+        }
+      },
+      (err) => {
+        if (!settled) {
+          settled = true;
+          chrome.tabs.onUpdated.removeListener(onUpdated);
+          reject(err);
+        }
+      }
+    );
   });
 }
 
