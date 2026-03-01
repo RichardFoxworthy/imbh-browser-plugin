@@ -7,6 +7,11 @@
  * - ASSIST mode: activated when a step can't be matched; shows an overlay
  *   prompting the user to navigate manually while recording interactions
  *
+ * Supports two navigation strategies:
+ * - **Sequential**: for adaptors without urlPattern — steps execute in order
+ * - **URL-driven**: for SPA forms (e.g. hash-based routing) — detects which
+ *   step the page is on after each transition using URL matching
+ *
  * When assist mode captures new navigation data, it's queued as a contribution
  * to the central adaptor service so future users benefit.
  */
@@ -33,6 +38,8 @@ export interface HybridProgress {
   stepIndex: number;
   totalSteps: number;
   stepName: string;
+  stepId: string;
+  completedSteps: number;
   status: 'running' | 'assist-needed' | 'paused-captcha' | 'completed' | 'error';
   message: string;
   filledFields: number;
@@ -66,6 +73,168 @@ export interface SelectorHealthEvent {
 }
 
 // ---------------------------------------------------------------------------
+// URL / step-matching helpers
+// ---------------------------------------------------------------------------
+
+const MAX_ITERATIONS = 50;
+
+/** Match a URL against a pattern (substring first, then regex fallback). */
+function testUrlPattern(url: string, pattern: string): boolean {
+  // Fast path: simple substring match
+  if (url.includes(pattern)) return true;
+  // Regex fallback
+  try {
+    return new RegExp(pattern).test(url);
+  } catch {
+    return false;
+  }
+}
+
+/** Find the first uncompleted step whose urlPattern matches the current URL. */
+function matchStepToUrl(
+  steps: AdaptorStep[],
+  completedStepIds: Set<string>,
+  currentUrl: string
+): AdaptorStep | null {
+  for (const step of steps) {
+    if (completedStepIds.has(step.id)) continue;
+    if (!step.urlPattern) continue;
+    if (testUrlPattern(currentUrl, step.urlPattern)) return step;
+  }
+  return null;
+}
+
+/**
+ * Fallback: find the first uncompleted step whose waitForSelector (or
+ * fallbackWaitSelectors) matches something in the current DOM.
+ * Uses short timeouts to avoid long waits.
+ */
+async function matchStepBySelector(
+  steps: AdaptorStep[],
+  completedStepIds: Set<string>
+): Promise<AdaptorStep | null> {
+  for (const step of steps) {
+    if (completedStepIds.has(step.id)) continue;
+
+    // Quick synchronous check first (no waiting)
+    const quick = document.querySelector(step.waitForSelector);
+    if (quick) return step;
+
+    // Check fallbacks synchronously
+    if (step.fallbackWaitSelectors?.length) {
+      for (const fb of step.fallbackWaitSelectors) {
+        if (document.querySelector(fb)) return step;
+      }
+    }
+  }
+
+  // Second pass with short async waits for dynamic content
+  for (const step of steps) {
+    if (completedStepIds.has(step.id)) continue;
+
+    const el = await waitForElement(step.waitForSelector, { timeout: 1500 });
+    if (el) return step;
+  }
+
+  return null;
+}
+
+/** Combined: URL match first (fast, no DOM wait), then selector fallback. */
+async function detectCurrentStep(
+  steps: AdaptorStep[],
+  completedStepIds: Set<string>
+): Promise<AdaptorStep | null> {
+  const currentUrl = window.location.href;
+
+  // Fast: URL-based matching
+  const urlMatch = matchStepToUrl(steps, completedStepIds, currentUrl);
+  if (urlMatch) return urlMatch;
+
+  // Slow: DOM selector fallback
+  return matchStepBySelector(steps, completedStepIds);
+}
+
+/**
+ * Wait for the URL to change after a navigation action (hash change or
+ * pushState). Returns the new URL, or the same URL on timeout.
+ */
+function waitForUrlChange(previousUrl: string, timeoutMs = 10000): Promise<string> {
+  return new Promise((resolve) => {
+    if (window.location.href !== previousUrl) {
+      resolve(window.location.href);
+      return;
+    }
+
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let pollInterval: ReturnType<typeof setInterval> | null = null;
+
+    function onUrlChanged() {
+      if (window.location.href !== previousUrl) {
+        cleanup();
+        resolve(window.location.href);
+      }
+    }
+
+    function cleanup() {
+      if (timer) clearTimeout(timer);
+      if (pollInterval) clearInterval(pollInterval);
+      window.removeEventListener('hashchange', onUrlChanged);
+      window.removeEventListener('popstate', onUrlChanged);
+    }
+
+    window.addEventListener('hashchange', onUrlChanged);
+    window.addEventListener('popstate', onUrlChanged);
+
+    // Also poll briefly — some SPAs don't fire events
+    pollInterval = setInterval(() => {
+      if (window.location.href !== previousUrl) {
+        cleanup();
+        resolve(window.location.href);
+      }
+    }, 200);
+
+    timer = setTimeout(() => {
+      cleanup();
+      resolve(window.location.href);
+    }, timeoutMs);
+  });
+}
+
+/** Determine if the adaptor is url-driven, sequential, or mixed. */
+function classifyAdaptorNavigation(
+  steps: AdaptorStep[]
+): 'url-driven' | 'sequential' | 'mixed' {
+  const withUrl = steps.filter((s) => s.urlPattern).length;
+  if (withUrl === 0) return 'sequential';
+  if (withUrl === steps.length) return 'url-driven';
+  return 'mixed';
+}
+
+/** Sanitise URL preserving hash fragments for SPA routing. */
+function sanitiseUrlPreserveHash(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.origin}${parsed.pathname}${parsed.hash}`;
+  } catch {
+    // Strip query params but keep hash
+    const [beforeHash, hash] = url.split('#');
+    const withoutQuery = beforeHash.split('?')[0];
+    return hash ? `${withoutQuery}#${hash}` : withoutQuery;
+  }
+}
+
+/** Find the last completed step ID (for contribution ordering). */
+function findLastCompletedStepId(
+  steps: AdaptorStep[],
+  completedStepIds: Set<string>
+): string | null {
+  for (let i = steps.length - 1; i >= 0; i--) {
+    if (completedStepIds.has(steps[i].id)) return steps[i].id;
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Main execution function
 // ---------------------------------------------------------------------------
 
@@ -82,6 +251,7 @@ export async function executeHybridSteps(
   const log: LogEntry[] = [];
   const contributions: StepContribution[] = [];
   let mode: NavigationMode = 'auto';
+  const completedStepIds = new Set<string>();
 
   function addLog(action: string, detail: string, success: boolean) {
     log.push({
@@ -99,7 +269,8 @@ export async function executeHybridSteps(
     status: HybridProgress['status'],
     message: string,
     filledFields = 0,
-    skippedFields: string[] = []
+    skippedFields: string[] = [],
+    stepId = ''
   ) {
     onProgress({
       adaptorId,
@@ -108,6 +279,8 @@ export async function executeHybridSteps(
       stepIndex: stepIdx,
       totalSteps: steps.length,
       stepName,
+      stepId,
+      completedSteps: completedStepIds.size,
       status,
       message,
       filledFields,
@@ -115,11 +288,274 @@ export async function executeHybridSteps(
     });
   }
 
+  // Decide strategy
+  const navMode = classifyAdaptorNavigation(steps);
+  addLog('init', `Navigation mode: ${navMode} (${steps.length} steps)`, true);
+
+  if (navMode === 'sequential') {
+    return executeSequentialSteps(
+      steps, profile, adaptorId, adaptorName, extractQuote,
+      onProgress, onSelectorHealth, pluginVersion,
+      log, contributions, mode, completedStepIds, addLog, emitProgress
+    );
+  }
+
+  // -----------------------------------------------------------------
+  // URL-driven / mixed: while-loop with step detection
+  // -----------------------------------------------------------------
+  let iteration = 0;
+  let consecutiveUnknownPages = 0;
+
+  while (iteration < MAX_ITERATIONS) {
+    iteration++;
+
+    // 1. Wait for page to stabilise
+    await waitForPageStable(800);
+
+    // 2. Check for CAPTCHA
+    if (detectCaptcha()) {
+      mode = 'paused-captcha';
+      addLog('captcha', 'CAPTCHA detected — pausing for user', true);
+      emitProgress(completedStepIds.size, 'CAPTCHA', 'paused-captcha',
+        'Please solve the CAPTCHA, then automation will continue.');
+
+      const captchaResolved = await waitForCaptchaResolution(300000);
+      if (!captchaResolved) {
+        addLog('captcha', 'CAPTCHA timeout', false);
+        return { success: false, quote: null, log, contributions, error: 'CAPTCHA not solved in time' };
+      }
+      mode = 'auto';
+      continue;
+    }
+
+    // 3. Try to extract quote — we might already be on the results page
+    const quote = extractQuote(document);
+    if (quote) {
+      addLog('extract', `Quote extracted: $${quote.premium.annual}/year`, true);
+      emitProgress(completedStepIds.size, 'Complete', 'completed',
+        `Quote: $${quote.premium.annual}/year`);
+      return { success: true, quote, log, contributions };
+    }
+
+    // 4. Detect which step we're on
+    const step = await detectCurrentStep(steps, completedStepIds);
+
+    if (!step) {
+      // No step matched
+      consecutiveUnknownPages++;
+      addLog('detect', `No step matched current page (attempt ${consecutiveUnknownPages}/3)`, false);
+
+      if (consecutiveUnknownPages >= 3) {
+        // Too many unknowns — enter assist or fail
+        const hasFormFields = document.querySelectorAll('input, select, textarea').length > 3;
+
+        if (hasFormFields) {
+          addLog('assist', 'Unknown form page after multiple retries — entering assist mode', true);
+          mode = 'assist';
+          emitProgress(completedStepIds.size, 'Unknown Step', 'assist-needed',
+            'We found a page we don\'t recognise. Please fill it out and click Done.');
+
+          const lastStepId = findLastCompletedStepId(steps, completedStepIds);
+
+          const assistResult = await showAssistOverlay({
+            adaptorName,
+            reason: 'We encountered a form page that doesn\'t match any known step. Please complete it manually.',
+          });
+
+          if (assistResult.completed && assistResult.interactions.length > 0) {
+            const contribution = buildContribution(adaptorId, lastStepId, assistResult.interactions, pluginVersion);
+            contribution.type = 'new_step';
+            contributions.push(contribution);
+          }
+
+          mode = 'auto';
+          consecutiveUnknownPages = 0;
+          continue;
+        }
+
+        addLog('detect', 'No matching step and no form fields — failing', false);
+        emitProgress(completedStepIds.size, 'Unknown', 'error',
+          'Could not find a matching step on the current page');
+        return {
+          success: false, quote: null, log, contributions,
+          error: 'No matching step found after multiple attempts',
+        };
+      }
+
+      // Brief wait then retry
+      await randomDelay(1000, 2000);
+      continue;
+    }
+
+    // Step matched — reset unknown counter
+    consecutiveUnknownPages = 0;
+    const stepIdx = steps.indexOf(step);
+    const lastStepId = findLastCompletedStepId(steps, completedStepIds);
+
+    addLog('detect', `Matched step: ${step.name} (${step.id}) via ${step.urlPattern ? 'URL' : 'selector'}`, true);
+    emitProgress(stepIdx, step.name, 'running',
+      `Step ${completedStepIds.size + 1}/${steps.length}: ${step.name}`,
+      0, [], step.id);
+
+    // 5. Confirm DOM readiness — even if URL matched, the DOM may not be ready yet
+    let pageReady = await waitForElement(step.waitForSelector, {
+      timeout: step.timeout || 15000,
+    });
+
+    if (!pageReady && step.fallbackWaitSelectors?.length) {
+      for (const fallback of step.fallbackWaitSelectors) {
+        pageReady = await waitForElement(fallback, { timeout: 5000 });
+        if (pageReady) {
+          addLog('wait', `Primary selector failed, fallback matched: ${fallback}`, true);
+          break;
+        }
+      }
+    }
+
+    if (!pageReady) {
+      // URL matched but DOM didn't — assist for this step
+      addLog('assist', `Step "${step.name}" URL matched but DOM not ready, entering assist mode`, true);
+      mode = 'assist';
+      emitProgress(stepIdx, step.name, 'assist-needed',
+        `We need your help with: ${step.name}`, 0, [], step.id);
+
+      const assistResult = await showAssistOverlay({
+        adaptorName,
+        stepName: step.name,
+        reason: `We detected the "${step.name}" page but the expected form fields weren't found.`,
+      });
+
+      if (assistResult.completed && assistResult.interactions.length > 0) {
+        const contribution = buildContribution(adaptorId, lastStepId, assistResult.interactions, pluginVersion);
+        contribution.stepId = step.id;
+        contribution.type = 'update';
+        contributions.push(contribution);
+      }
+
+      mode = 'auto';
+      completedStepIds.add(step.id);
+      continue;
+    }
+
+    // 6. AUTO mode: fill fields
+    await waitForPageStable(800);
+
+    const { filledCount, skippedFields } = await fillStepFields(
+      step, profile, adaptorId, onSelectorHealth, addLog
+    );
+
+    emitProgress(stepIdx, step.name, 'running',
+      `Filled ${filledCount}/${step.fields.length} fields`,
+      filledCount, skippedFields, step.id);
+
+    // 7. High failure rate → assist mode
+    const failRate = step.fields.length > 0
+      ? skippedFields.length / step.fields.length
+      : 0;
+
+    if (failRate > 0.5 && step.fields.length > 2) {
+      addLog('assist', `High field failure rate (${Math.round(failRate * 100)}%), offering assist mode`, true);
+      mode = 'assist';
+
+      emitProgress(stepIdx, step.name, 'assist-needed',
+        `Some fields couldn't be filled automatically. Please complete the remaining fields.`,
+        filledCount, skippedFields, step.id);
+
+      const assistResult = await showAssistOverlay({
+        adaptorName,
+        stepName: step.name,
+        reason: `${skippedFields.length} of ${step.fields.length} fields couldn't be filled automatically. Please complete the missing fields.`,
+      });
+
+      if (assistResult.completed && assistResult.interactions.length > 0) {
+        const contribution = buildContribution(adaptorId, lastStepId, assistResult.interactions, pluginVersion);
+        contribution.stepId = step.id;
+        contribution.type = 'update';
+        contributions.push(contribution);
+      }
+
+      mode = 'auto';
+    }
+
+    // 8. Mark step completed, record verification contribution
+    completedStepIds.add(step.id);
+
+    if (failRate <= 0.2) {
+      contributions.push({
+        adaptorId,
+        stepId: step.id,
+        type: 'verification',
+        timestamp: new Date().toISOString(),
+        pluginVersion,
+        pageUrl: sanitiseUrlPreserveHash(window.location.href),
+        pageTitle: document.title,
+      });
+    }
+
+    // 9. Navigate: click next, wait for URL change + page stable
+    if (step.nextAction) {
+      const urlBefore = window.location.href;
+      addLog('navigate', `Clicking next: ${step.nextAction.selector || 'auto-detect'}`, true);
+      await randomDelay(1000, 3000);
+      const clicked = await clickNext(step.nextAction.selector);
+      if (!clicked) {
+        addLog('navigate', 'Could not find next button', false);
+      }
+
+      // Wait for URL change (SPA) + page transition
+      await waitForUrlChange(urlBefore, step.timeout || 15000);
+      await waitForPageTransition(step.timeout || 15000);
+      await randomDelay(3000, 8000);
+    } else {
+      // No explicit nextAction — auto-advancing step (e.g. button-select).
+      // The click during field-fill likely changed the URL already.
+      // Brief wait for the SPA to settle, then loop re-detects.
+      await randomDelay(1000, 3000);
+      await waitForPageStable(1500);
+    }
+
+    // 10. Loop back to top — re-detect step from new URL
+  }
+
+  // Exhausted iterations
+  addLog('error', `Reached maximum iterations (${MAX_ITERATIONS})`, false);
+  emitProgress(completedStepIds.size, 'Error', 'error', 'Automation loop exceeded maximum iterations');
+  return {
+    success: false, quote: null, log, contributions,
+    error: `Exceeded maximum iterations (${MAX_ITERATIONS})`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Sequential execution (preserves original for-loop behaviour)
+// ---------------------------------------------------------------------------
+
+async function executeSequentialSteps(
+  steps: AdaptorStep[],
+  profile: UserProfile,
+  adaptorId: string,
+  adaptorName: string,
+  extractQuote: (doc: Document) => QuoteResult | null,
+  onProgress: (progress: HybridProgress) => void,
+  onSelectorHealth: ((event: SelectorHealthEvent) => void) | undefined,
+  pluginVersion: string,
+  log: LogEntry[],
+  contributions: StepContribution[],
+  mode: NavigationMode,
+  completedStepIds: Set<string>,
+  addLog: (action: string, detail: string, success: boolean) => void,
+  emitProgress: (
+    stepIdx: number, stepName: string, status: HybridProgress['status'],
+    message: string, filledFields?: number, skippedFields?: string[], stepId?: string
+  ) => void
+): Promise<HybridResult> {
+
   for (let stepIdx = 0; stepIdx < steps.length; stepIdx++) {
     const step = steps[stepIdx];
     const prevStepId = stepIdx > 0 ? steps[stepIdx - 1].id : null;
 
-    emitProgress(stepIdx, step.name, 'running', `Step ${stepIdx + 1}/${steps.length}: ${step.name}`);
+    emitProgress(stepIdx, step.name, 'running',
+      `Step ${stepIdx + 1}/${steps.length}: ${step.name}`, 0, [], step.id);
 
     // ------------------------------------------------------------------
     // Try to match the current page to the expected step
@@ -152,7 +588,8 @@ export async function executeHybridSteps(
       }
 
       mode = 'assist';
-      emitProgress(stepIdx, step.name, 'assist-needed', `We need your help with: ${step.name}`);
+      emitProgress(stepIdx, step.name, 'assist-needed',
+        `We need your help with: ${step.name}`, 0, [], step.id);
 
       const assistResult = await showAssistOverlay({
         adaptorName,
@@ -161,7 +598,6 @@ export async function executeHybridSteps(
       });
 
       if (assistResult.completed && assistResult.interactions.length > 0) {
-        // Build a contribution from the user's interactions
         const contribution = buildContribution(
           adaptorId,
           prevStepId,
@@ -178,6 +614,7 @@ export async function executeHybridSteps(
       }
 
       mode = 'auto';
+      completedStepIds.add(step.id);
       continue;
     }
 
@@ -190,7 +627,8 @@ export async function executeHybridSteps(
     if (detectCaptcha()) {
       mode = 'paused-captcha';
       addLog('captcha', 'CAPTCHA detected — pausing for user', true);
-      emitProgress(stepIdx, step.name, 'paused-captcha', 'Please solve the CAPTCHA, then automation will continue.');
+      emitProgress(stepIdx, step.name, 'paused-captcha',
+        'Please solve the CAPTCHA, then automation will continue.', 0, [], step.id);
 
       const captchaResolved = await waitForCaptchaResolution(300000);
       if (!captchaResolved) {
@@ -201,99 +639,13 @@ export async function executeHybridSteps(
     }
 
     // Fill fields
-    const skippedFields: string[] = [];
-    let filledCount = 0;
+    const { filledCount, skippedFields } = await fillStepFields(
+      step, profile, adaptorId, onSelectorHealth, addLog
+    );
 
-    for (const fieldMapping of step.fields) {
-      const rawValue = resolvePath(profile as any, fieldMapping.profilePath);
-      if (rawValue === undefined || rawValue === null || rawValue === '') {
-        skippedFields.push(fieldMapping.profilePath);
-        addLog('field', `Skipped ${fieldMapping.profilePath} — no value in profile`, false);
-        continue;
-      }
-
-      // Apply transform (declarative or legacy string)
-      let value: string;
-      if (fieldMapping.transform && typeof fieldMapping.transform === 'object') {
-        value = applyTransform(rawValue, fieldMapping.transform as unknown as TransformSpec);
-      } else if (typeof fieldMapping.transform === 'string') {
-        // Legacy string transform — kept for backward compatibility with seed data
-        try {
-          const fn = new Function('return ' + fieldMapping.transform)();
-          value = fn(rawValue);
-        } catch {
-          value = String(rawValue);
-        }
-      } else {
-        value = String(rawValue);
-      }
-
-      // Find the field element — track which selector strategy worked
-      const fieldEl = await findField(fieldMapping);
-      let primaryWorked = false;
-      let fallbackUsed: string | null = null;
-      let labelMatchUsed = false;
-
-      if (fieldEl) {
-        // Determine which strategy matched (approximate — findField is opaque)
-        const primaryMatch = document.querySelector(fieldMapping.selector);
-        if (primaryMatch === fieldEl) {
-          primaryWorked = true;
-        } else {
-          for (const fb of fieldMapping.fallbackSelectors || []) {
-            const fbMatch = document.querySelector(fb);
-            if (fbMatch === fieldEl) {
-              fallbackUsed = fb;
-              break;
-            }
-          }
-          if (!fallbackUsed) {
-            labelMatchUsed = true;
-          }
-        }
-
-        // Report selector health
-        onSelectorHealth?.({
-          adaptorId,
-          stepId: step.id,
-          fieldPath: fieldMapping.profilePath,
-          primarySelector: fieldMapping.selector,
-          primaryWorked,
-          fallbackUsed,
-          labelMatchUsed,
-        });
-      }
-
-      if (!fieldEl) {
-        skippedFields.push(fieldMapping.profilePath);
-        addLog('field', `Could not find field for ${fieldMapping.profilePath}`, false);
-
-        // Report the failure
-        onSelectorHealth?.({
-          adaptorId,
-          stepId: step.id,
-          fieldPath: fieldMapping.profilePath,
-          primarySelector: fieldMapping.selector,
-          primaryWorked: false,
-          fallbackUsed: null,
-          labelMatchUsed: false,
-        });
-        continue;
-      }
-
-      const filled = await fillField(fieldEl, value, fieldMapping.action);
-      if (filled) {
-        filledCount++;
-        addLog('field', `Filled ${fieldMapping.profilePath}`, true);
-      } else {
-        skippedFields.push(fieldMapping.profilePath);
-        addLog('field', `Failed to fill ${fieldMapping.profilePath}`, false);
-      }
-
-      await randomDelay(500, 2000);
-    }
-
-    emitProgress(stepIdx, step.name, 'running', `Filled ${filledCount}/${step.fields.length} fields`, filledCount, skippedFields);
+    emitProgress(stepIdx, step.name, 'running',
+      `Filled ${filledCount}/${step.fields.length} fields`,
+      filledCount, skippedFields, step.id);
 
     // If too many fields failed, consider switching to assist for this step
     const failRate = step.fields.length > 0
@@ -305,7 +657,8 @@ export async function executeHybridSteps(
       mode = 'assist';
 
       emitProgress(stepIdx, step.name, 'assist-needed',
-        `Some fields couldn't be filled automatically. Please complete the remaining fields.`);
+        `Some fields couldn't be filled automatically. Please complete the remaining fields.`,
+        filledCount, skippedFields, step.id);
 
       const assistResult = await showAssistOverlay({
         adaptorName,
@@ -323,6 +676,9 @@ export async function executeHybridSteps(
       mode = 'auto';
     }
 
+    // Mark step completed
+    completedStepIds.add(step.id);
+
     // Queue a verification if the step worked well
     if (failRate <= 0.2) {
       contributions.push({
@@ -331,7 +687,7 @@ export async function executeHybridSteps(
         type: 'verification',
         timestamp: new Date().toISOString(),
         pluginVersion,
-        pageUrl: sanitiseUrl(window.location.href),
+        pageUrl: sanitiseUrlPreserveHash(window.location.href),
         pageTitle: document.title,
       });
     }
@@ -355,11 +711,9 @@ export async function executeHybridSteps(
   // ------------------------------------------------------------------
   await waitForPageStable(2000);
 
-  // If we're not on a quote results page, there might be extra steps
   let quote = extractQuote(document);
 
   if (!quote) {
-    // Check if we're still in a form — might be an unknown extra step
     const hasFormFields = document.querySelectorAll('input, select, textarea').length > 3;
 
     if (hasFormFields) {
@@ -367,9 +721,9 @@ export async function executeHybridSteps(
       mode = 'assist';
 
       emitProgress(steps.length, 'Unknown Step', 'assist-needed',
-        'There appears to be an additional step we didn\'t expect.');
+        'There appears to be an additional step we don\'t expect.', 0, []);
 
-      const lastStepId = steps.length > 0 ? steps[steps.length - 1].id : null;
+      const lastStepId = findLastCompletedStepId(steps, completedStepIds);
 
       const assistResult = await showAssistOverlay({
         adaptorName,
@@ -384,7 +738,6 @@ export async function executeHybridSteps(
 
       mode = 'auto';
 
-      // Try extracting quote again after user's manual navigation
       await waitForPageStable(2000);
       quote = extractQuote(document);
     }
@@ -405,6 +758,110 @@ export async function executeHybridSteps(
 }
 
 // ---------------------------------------------------------------------------
+// Shared: fill all fields for a step
+// ---------------------------------------------------------------------------
+
+async function fillStepFields(
+  step: AdaptorStep,
+  profile: UserProfile,
+  adaptorId: string,
+  onSelectorHealth: ((event: SelectorHealthEvent) => void) | undefined,
+  addLog: (action: string, detail: string, success: boolean) => void
+): Promise<{ filledCount: number; skippedFields: string[] }> {
+  const skippedFields: string[] = [];
+  let filledCount = 0;
+
+  for (const fieldMapping of step.fields) {
+    const rawValue = resolvePath(profile as any, fieldMapping.profilePath);
+    if (rawValue === undefined || rawValue === null || rawValue === '') {
+      skippedFields.push(fieldMapping.profilePath);
+      addLog('field', `Skipped ${fieldMapping.profilePath} — no value in profile`, false);
+      continue;
+    }
+
+    // Apply transform (declarative or legacy string)
+    let value: string;
+    if (fieldMapping.transform && typeof fieldMapping.transform === 'object') {
+      value = applyTransform(rawValue, fieldMapping.transform as unknown as TransformSpec);
+    } else if (typeof fieldMapping.transform === 'string') {
+      // Legacy string transform — kept for backward compatibility with seed data
+      try {
+        // eslint-disable-next-line no-new-func
+        const fn = new Function('return ' + fieldMapping.transform)();
+        value = fn(rawValue);
+      } catch {
+        value = String(rawValue);
+      }
+    } else {
+      value = String(rawValue);
+    }
+
+    // Find the field element — track which selector strategy worked
+    const fieldEl = await findField(fieldMapping);
+    let primaryWorked = false;
+    let fallbackUsed: string | null = null;
+    let labelMatchUsed = false;
+
+    if (fieldEl) {
+      const primaryMatch = document.querySelector(fieldMapping.selector);
+      if (primaryMatch === fieldEl) {
+        primaryWorked = true;
+      } else {
+        for (const fb of fieldMapping.fallbackSelectors || []) {
+          const fbMatch = document.querySelector(fb);
+          if (fbMatch === fieldEl) {
+            fallbackUsed = fb;
+            break;
+          }
+        }
+        if (!fallbackUsed) {
+          labelMatchUsed = true;
+        }
+      }
+
+      onSelectorHealth?.({
+        adaptorId,
+        stepId: step.id,
+        fieldPath: fieldMapping.profilePath,
+        primarySelector: fieldMapping.selector,
+        primaryWorked,
+        fallbackUsed,
+        labelMatchUsed,
+      });
+    }
+
+    if (!fieldEl) {
+      skippedFields.push(fieldMapping.profilePath);
+      addLog('field', `Could not find field for ${fieldMapping.profilePath}`, false);
+
+      onSelectorHealth?.({
+        adaptorId,
+        stepId: step.id,
+        fieldPath: fieldMapping.profilePath,
+        primarySelector: fieldMapping.selector,
+        primaryWorked: false,
+        fallbackUsed: null,
+        labelMatchUsed: false,
+      });
+      continue;
+    }
+
+    const filled = await fillField(fieldEl, value, fieldMapping.action);
+    if (filled) {
+      filledCount++;
+      addLog('field', `Filled ${fieldMapping.profilePath}`, true);
+    } else {
+      skippedFields.push(fieldMapping.profilePath);
+      addLog('field', `Failed to fill ${fieldMapping.profilePath}`, false);
+    }
+
+    await randomDelay(500, 2000);
+  }
+
+  return { filledCount, skippedFields };
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -415,13 +872,4 @@ async function waitForCaptchaResolution(timeoutMs: number): Promise<boolean> {
     if (!detectCaptcha()) return true;
   }
   return false;
-}
-
-function sanitiseUrl(url: string): string {
-  try {
-    const parsed = new URL(url);
-    return `${parsed.origin}${parsed.pathname}`;
-  } catch {
-    return url.split('?')[0].split('#')[0];
-  }
 }

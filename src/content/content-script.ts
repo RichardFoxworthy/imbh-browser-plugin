@@ -91,6 +91,8 @@ async function handleHybridAutomation(
       stepIndex: progress.stepIndex,
       totalSteps: progress.totalSteps,
       stepName: progress.stepName,
+      stepId: progress.stepId,
+      completedSteps: progress.completedSteps,
       status: progress.status === 'assist-needed' ? 'paused-unknown-field' : progress.status,
       message: progress.message,
       filledFields: progress.filledFields,

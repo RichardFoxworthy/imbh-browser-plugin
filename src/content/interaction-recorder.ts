@@ -473,14 +473,18 @@ function inferProfilePath(el: ElementSnapshot): string | undefined {
 }
 
 /**
- * Sanitise a URL to remove query parameters and fragments (potential PII).
- * Keeps only scheme + host + pathname.
+ * Sanitise a URL to remove query parameters (potential PII).
+ * Preserves hash fragments for SPA routing (e.g. `#!/property-type`).
+ * Keeps scheme + host + pathname + hash.
  */
 function sanitiseUrl(url: string): string {
   try {
     const parsed = new URL(url);
-    return `${parsed.origin}${parsed.pathname}`;
+    return `${parsed.origin}${parsed.pathname}${parsed.hash}`;
   } catch {
-    return url.split('?')[0].split('#')[0];
+    // Strip query params but keep hash
+    const [beforeHash, hash] = url.split('#');
+    const withoutQuery = beforeHash.split('?')[0];
+    return hash ? `${withoutQuery}#${hash}` : withoutQuery;
   }
 }
