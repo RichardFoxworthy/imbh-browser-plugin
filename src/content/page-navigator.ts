@@ -124,9 +124,32 @@ export function detectCaptcha(): boolean {
     '#captcha',
     '[data-captcha]',
     'iframe[title*="challenge"]',
+    // Cloudflare Turnstile (visible containers)
+    'iframe[src*="challenges.cloudflare.com"]',
+    'iframe[src*="turnstile"]',
+    '.cf-turnstile',
+    '[data-sitekey]',
+    '[class*="turnstile"]',
+    '[id*="turnstile"]',
+    // Cloudflare managed challenge page
+    '#challenge-running',
+    '#challenge-stage',
   ];
 
-  return captchaSelectors.some((sel) => document.querySelector(sel) !== null);
+  if (captchaSelectors.some((sel) => document.querySelector(sel) !== null)) {
+    return true;
+  }
+
+  // Cloudflare Turnstile with closed shadow DOM — detect via hidden response
+  // inputs in the main DOM. Challenge is active when the response is empty.
+  const turnstileResponse = document.querySelector<HTMLInputElement>(
+    'input[name="cf-turnstile-response"]'
+  );
+  if (turnstileResponse && !turnstileResponse.value) {
+    return true;
+  }
+
+  return false;
 }
 
 /**
