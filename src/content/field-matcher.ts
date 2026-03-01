@@ -92,8 +92,7 @@ export async function fillField(
       case 'select':
         return selectDropdownValue(el as HTMLSelectElement, value);
       case 'click':
-        el.click();
-        return true;
+        return clickByValue(el, value);
       case 'radio':
         return clickRadioByValue(el, value);
       case 'checkbox':
@@ -169,6 +168,55 @@ function selectDropdownValue(select: HTMLSelectElement, value: string): boolean 
   }
 
   return false;
+}
+
+/**
+ * Click a button/element whose text matches the given value.
+ * For button-selection pages (e.g. "House" / "Apartment" / "Townhouse"),
+ * the adaptor's selector is generic ("button") so findField returns the
+ * first button. This function searches siblings and nearby buttons for
+ * one whose text matches the profile value, then clicks it.
+ */
+function clickByValue(el: HTMLElement, value: string): boolean {
+  const normValue = normaliseLabel(value);
+
+  // If the element itself matches, just click it
+  if (fuzzyMatch(el.textContent || '', value)) {
+    el.click();
+    return true;
+  }
+
+  // Search sibling buttons in the same container
+  const container = el.parentElement?.closest('form, [class*="step"], [class*="page"], [class*="question"], main, section') || el.parentElement;
+  if (container) {
+    const candidates = container.querySelectorAll('button, [role="button"], a.btn, [class*="option"], [class*="choice"]');
+    for (const btn of candidates) {
+      const text = normaliseLabel(btn.textContent || '');
+      if (fuzzyMatch(btn.textContent || '', value) || text === normValue) {
+        (btn as HTMLElement).click();
+        return true;
+      }
+    }
+  }
+
+  // Broader search: all visible buttons on the page
+  const allButtons = document.querySelectorAll('button, [role="button"]');
+  for (const btn of allButtons) {
+    const text = normaliseLabel(btn.textContent || '');
+    if (fuzzyMatch(btn.textContent || '', value) || text === normValue) {
+      const htmlBtn = btn as HTMLElement;
+      const style = window.getComputedStyle(htmlBtn);
+      if (style.display !== 'none' && style.visibility !== 'hidden') {
+        htmlBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        htmlBtn.click();
+        return true;
+      }
+    }
+  }
+
+  // Last resort: just click the original element
+  el.click();
+  return true;
 }
 
 /** Click a radio button matching the given value. */

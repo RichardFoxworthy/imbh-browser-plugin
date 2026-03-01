@@ -176,20 +176,37 @@ const MODAL_CLOSE_SELECTORS = [
   '[role="dialog"] button',
 ];
 
-/** Keywords in class/id/text that indicate a live chat or contact widget (not a blocking modal). */
-const CHAT_WIDGET_PATTERNS = [
-  'chat', 'livechat', 'live-chat', 'contact-us', 'contactus',
+/** Keywords in class/id that indicate a live chat or contact widget (not a blocking modal). */
+const CHAT_WIDGET_CLASS_PATTERNS = [
+  'chat', 'livechat', 'live-chat', 'contact-us', 'contactus', 'contact',
   'intercom', 'zendesk', 'drift', 'hubspot', 'crisp', 'tawk',
   'freshchat', 'olark', 'helpshift', 'genesys', 'salesforce-chat',
+  'proactive', 'help-widget', 'support-widget', 'cta-popup',
+];
+
+/** Keywords in text content that indicate a non-blocking contact/help popup. */
+const CHAT_WIDGET_TEXT_PATTERNS = [
+  'contact us', 'need help', 'can we help', 'live chat', 'chat with us',
+  'talk to us', 'get in touch', 'call us', 'speak to',
 ];
 
 /** Check if an element or its ancestors look like a chat/contact widget. */
 function isChatWidget(el: Element): boolean {
+  // Check text content of the popup/modal itself
+  const closestModal = el.closest('[class*="modal"], [class*="popup"], [class*="overlay"], [class*="dialog"], [role="dialog"]');
+  if (closestModal) {
+    const text = (closestModal.textContent || '').toLowerCase();
+    if (CHAT_WIDGET_TEXT_PATTERNS.some((p) => text.includes(p))) {
+      return true;
+    }
+  }
+
+  // Check class/id on element and ancestors
   let node: Element | null = el;
   while (node) {
     const cls = (node.getAttribute('class') || '').toLowerCase();
     const id = (node.getAttribute('id') || '').toLowerCase();
-    if (CHAT_WIDGET_PATTERNS.some((p) => cls.includes(p) || id.includes(p))) {
+    if (CHAT_WIDGET_CLASS_PATTERNS.some((p) => cls.includes(p) || id.includes(p))) {
       return true;
     }
     node = node.parentElement;
