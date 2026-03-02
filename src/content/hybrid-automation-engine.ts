@@ -362,7 +362,11 @@ export async function executeHybridSteps(
 
       if (consecutiveUnknownPages >= 3) {
         // Too many unknowns — enter assist or fail
-        const hasFormFields = document.querySelectorAll('input, select, textarea').length > 3;
+        // Include buttons — many insurance forms use button-based selection
+        // (e.g. month picker with 12 buttons) rather than input/select elements
+        const formElementCount = document.querySelectorAll('input, select, textarea').length;
+        const buttonCount = document.querySelectorAll('button, [role="button"]').length;
+        const hasFormFields = formElementCount > 3 || buttonCount > 3;
 
         if (hasFormFields) {
           addLog('assist', 'Unknown form page after multiple retries — entering assist mode', true);
@@ -773,7 +777,9 @@ async function executeSequentialSteps(
   let quote = extractQuote(document);
 
   if (!quote) {
-    const hasFormFields = document.querySelectorAll('input, select, textarea').length > 3;
+    const formElementCount = document.querySelectorAll('input, select, textarea').length;
+    const buttonCount = document.querySelectorAll('button, [role="button"]').length;
+    const hasFormFields = formElementCount > 3 || buttonCount > 3;
 
     if (hasFormFields) {
       addLog('assist', 'Unexpected form page after all known steps — entering assist mode', true);
@@ -979,11 +985,16 @@ async function captureAssistValues(
   }
 
   if (updates.length > 0) {
-    // Notify service worker to persist and broadcast
-    chrome.runtime.sendMessage({
-      type: 'PROFILE_FIELD_UPDATE',
-      updates,
-    }).catch(() => {});
+    // Await service worker persistence before continuing — ensures
+    // profile updates survive even if the tab crashes on a later step
+    try {
+      await chrome.runtime.sendMessage({
+        type: 'PROFILE_FIELD_UPDATE',
+        updates,
+      });
+    } catch {
+      // Service worker may not be available — local patch still applies
+    }
   }
 }
 
