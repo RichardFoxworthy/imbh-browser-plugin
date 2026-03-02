@@ -76,6 +76,15 @@ export function ProviderSelector({ profile, onStartQuoting }: Props) {
         profile,
         productType,
       });
+      // Open side panel from popup context — requires user gesture which
+      // we have here (button click handler). The service worker can't do
+      // this reliably because it lacks a user gesture context.
+      try {
+        const win = await chrome.windows.getCurrent();
+        await (chrome.sidePanel as any)?.open?.({ windowId: win.id });
+      } catch {
+        // Side panel API may not be available
+      }
       onStartQuoting();
     } catch (err) {
       setLoading(false);

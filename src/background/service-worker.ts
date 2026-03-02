@@ -207,13 +207,6 @@ async function handleStartQuoteRun(message: {
     productType,
   };
 
-  // Auto-open the side panel so progress is visible even if the popup closes
-  try {
-    await (chrome.sidePanel as any)?.open?.({});
-  } catch {
-    // Side panel API may not be available or may require user gesture
-  }
-
   // Start the quote run in the background — don't await so sendResponse
   // returns immediately and the popup can transition to the progress view
   adapterTabMap.clear();
