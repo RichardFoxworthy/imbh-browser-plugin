@@ -21,15 +21,19 @@ export async function clearSiteData(origin: string): Promise<void> {
  * that browsingData.remove with an explicit origin would miss.
  */
 export async function clearDomainCookies(baseDomain: string): Promise<void> {
-  const cookies = await chrome.cookies.getAll({ domain: baseDomain });
-  await Promise.all(
-    cookies.map((c) => {
-      const protocol = c.secure ? 'https' : 'http';
-      const domain = c.domain.startsWith('.') ? c.domain.slice(1) : c.domain;
-      return chrome.cookies.remove({
-        url: `${protocol}://${domain}${c.path}`,
-        name: c.name,
-      });
-    }),
-  );
+  try {
+    const cookies = await chrome.cookies.getAll({ domain: baseDomain });
+    await Promise.all(
+      cookies.map((c) => {
+        const protocol = c.secure ? 'https' : 'http';
+        const domain = c.domain.startsWith('.') ? c.domain.slice(1) : c.domain;
+        return chrome.cookies.remove({
+          url: `${protocol}://${domain}${c.path}`,
+          name: c.name,
+        });
+      }),
+    );
+  } catch {
+    // cookies permission may not be granted — non-fatal
+  }
 }

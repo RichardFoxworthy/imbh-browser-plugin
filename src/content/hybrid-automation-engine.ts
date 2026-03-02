@@ -317,6 +317,10 @@ export async function executeHybridSteps(
   // Cloudflare challenges, landing trackers) before the actual form
   // starts. We poll for a URL match and also detect Cloudflare
   // challenges so the user can be prompted to solve them.
+  //
+  // Cloudflare's invisible JS challenge can fail due to fingerprint
+  // spoofing, leaving a blank page. A reload causes Cloudflare to
+  // escalate to the interactive "verify you are human" challenge.
   {
     const initialMatch = matchStepToUrl(steps, completedStepIds, window.location.href);
     if (!initialMatch) {
@@ -327,6 +331,7 @@ export async function executeHybridSteps(
       const maxWaitMs = 30000;
       let found = false;
       let captchaReported = false;
+      let reloadedForChallenge = false;
 
       while (Date.now() - waitStart < maxWaitMs) {
         await new Promise((r) => setTimeout(r, 1500));
@@ -342,6 +347,31 @@ export async function executeHybridSteps(
           addLog('captcha', 'Cloudflare challenge detected before form loaded', true);
           emitProgress(0, 'CAPTCHA', 'paused-captcha',
             'Please solve the CAPTCHA in the insurer tab, then automation will continue.');
+        }
+
+        // Detect blank page from a failed Cloudflare JS challenge.
+        // Cloudflare's invisible challenge can fail when it detects
+        // browser fingerprint inconsistencies, leaving a blank page.
+        // Reloading causes Cloudflare to escalate to the interactive
+        // "verify you are human" challenge that the user can solve.
+        if (!captchaReported && !reloadedForChallenge && Date.now() - waitStart > 5000) {
+          const bodyText = (document.body?.innerText || '').trim();
+          const isBlank = bodyText.length < 50;
+          const isCloudflarePage = document.title.toLowerCase().includes('just a moment')
+            || document.title === ''
+            || !!document.querySelector('meta[http-equiv="refresh"]');
+
+          if (isBlank && (isCloudflarePage || bodyText.length === 0)) {
+            reloadedForChallenge = true;
+            addLog('init', 'Page appears blank (likely failed Cloudflare JS challenge) — reloading', true);
+            emitProgress(0, 'Loading', 'running', 'Reloading page to trigger verification…');
+            // Reload destroys this content script context. The quote
+            // runner's challenge recovery will re-send the automation
+            // message after the new page loads.
+            window.location.reload();
+            // Keep this context alive briefly so the reload takes effect
+            await new Promise((r) => setTimeout(r, 60000));
+          }
         }
 
         if (matchStepToUrl(steps, completedStepIds, window.location.href)) {
