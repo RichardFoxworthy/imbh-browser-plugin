@@ -21,6 +21,8 @@ import type {
   AdaptorDefinition,
   AdaptorVersionMap,
   StepContribution,
+  DiscoverySession,
+  SkeletonAdaptorRequest,
 } from './types';
 
 // ---------------------------------------------------------------------------
@@ -218,6 +220,69 @@ export async function getAdaptor(
  */
 export async function getAllAdaptors(): Promise<AdaptorDefinition[]> {
   return getAllCachedAdaptors();
+}
+
+/**
+ * Bootstrap a new skeleton adaptor on the central API.
+ * Creates an adaptor with zero steps, ready for discovery.
+ */
+export async function bootstrapAdaptor(
+  request: SkeletonAdaptorRequest
+): Promise<{
+  adaptorId: string;
+  created: boolean;
+  definition: AdaptorDefinition | null;
+}> {
+  const result = await fetchWithRetry<{
+    adaptorId: string;
+    created: boolean;
+    definition?: AdaptorDefinition;
+    version?: number;
+  }>(`${API_BASE_URL}/api/adaptors/bootstrap`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  });
+
+  let definition: AdaptorDefinition | null = result.definition ?? null;
+
+  // If the adaptor already existed, fetch its full definition
+  if (!result.created && !definition) {
+    definition = await fetchWithRetry<AdaptorDefinition>(
+      `${API_BASE_URL}/api/adaptors/${result.adaptorId}`
+    );
+  }
+
+  // Cache locally
+  if (definition) {
+    await cacheAdaptor(definition);
+  }
+
+  return {
+    adaptorId: result.adaptorId,
+    created: result.created,
+    definition,
+  };
+}
+
+/**
+ * Submit a full discovery session to the central API.
+ */
+export async function submitDiscoverySession(
+  session: DiscoverySession
+): Promise<{
+  stepsPromoted: number;
+  maturity: string;
+  message: string;
+}> {
+  return fetchWithRetry(
+    `${API_BASE_URL}/api/adaptors/${session.adaptorId}/discovery`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(session),
+    }
+  );
 }
 
 // ---------------------------------------------------------------------------

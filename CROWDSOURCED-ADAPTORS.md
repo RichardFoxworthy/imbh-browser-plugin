@@ -8,13 +8,55 @@ Adaptor selectors are hardcoded in TypeScript classes and break when insurers ch
 
 A **crowdsourced, self-healing navigation system** where:
 
-1. The plugin auto-navigates users through known form steps
-2. When it encounters unknown or changed pages, it prompts users to navigate manually
-3. Every manual navigation is recorded (selectors and structure only — never user data)
-4. Recordings are contributed to a central service
-5. The central service merges contributions and distributes updated adaptors to all users
+1. **Any user can add a new insurer** — just provide a URL and the plugin enters discovery mode
+2. The plugin auto-navigates users through known form steps
+3. When it encounters unknown or changed pages, it prompts users to navigate manually
+4. Every manual navigation is recorded (selectors and structure only — never user data)
+5. Recordings are contributed to a central service
+6. The central service merges contributions and distributes updated adaptors to all users
 
 Every user interaction makes the system smarter for the next user.
+
+## Zero-Knowledge Bootstrap
+
+The system can begin with **zero knowledge** of any insurer form. No developer needs to
+write a single selector. The entire adaptor is crowdsourced:
+
+```
+USER A: "I want to add Suncorp"
+  → Provides URL: https://www.suncorp.com.au/insurance/home/get-a-quote
+  → Plugin creates a "skeleton" adaptor (zero steps)
+  → Opens the URL in DISCOVERY MODE
+  → User fills the entire form manually
+  → Plugin records every page: fields, buttons, URLs, structure
+  → Full discovery session submitted to central service
+
+USER B: "I also want to quote Suncorp"
+  → Plugin detects the skeleton adaptor exists
+  → Opens in discovery mode again (not enough data yet)
+  → User fills the form, recording submitted
+  → Central service ALIGNS both sessions:
+    - Same URL patterns? Same fields? → Consensus reached
+    - Steps promoted into the adaptor definition
+    - Maturity: skeleton → discovered → emerging
+
+USER C onwards:
+  → Plugin now has real steps with field mappings
+  → AUTO MODE kicks in — fills fields automatically
+  → Any failures fall back to ASSIST MODE
+  → Verifications increase confidence scores
+  → Maturity: emerging → usable → stable
+```
+
+### Maturity Levels
+
+| Level | Steps | Confidence | Behaviour |
+|-------|-------|-----------|-----------|
+| **skeleton** | 0 | 0 | Full discovery mode — user records everything |
+| **discovered** | >0 | <0.3 | Steps exist but unverified — mostly assist mode |
+| **emerging** | >0 | <0.3 | Multiple users contributed — some auto-fill works |
+| **usable** | >0 | ≥0.3 | Most steps work automatically |
+| **stable** | >0 | ≥0.7 | Reliable auto-fill, 5+ contributors |
 
 ## Architecture Overview
 
@@ -218,39 +260,51 @@ GET  /api/adaptors/versions           → {id: version} map for sync
 GET  /api/adaptors/:id                → full adaptor definition
 POST /api/adaptors/:id/contributions  → submit step contributions
 GET  /api/adaptors/:id/health         → aggregated health status
+POST /api/adaptors/bootstrap          → create skeleton adaptor from URL
+POST /api/adaptors/:id/discovery      → submit full discovery session
+GET  /api/adaptors/:id/maturity       → get adaptor maturity status
 ```
 
 ## File Structure (New/Modified)
 
 ```
 src/
-├── adaptors/                          # renamed from adapters/
-│   ├── types.ts                       # updated with new types
-│   ├── adaptor-definition.ts          # JSON adaptor runtime wrapper
+├── adaptors/
+│   ├── types.ts                       # all types (adaptor, contribution, discovery)
+│   ├── skeleton-factory.ts            # creates zero-knowledge skeleton adaptors
+│   ├── adaptor-runtime.ts             # loads and executes adaptor definitions
 │   ├── adaptor-cache.ts               # IndexedDB cache for adaptors
-│   ├── adaptor-sync.ts                # fetch/push to central API
+│   ├── adaptor-sync.ts                # fetch/push/bootstrap/discovery via central API
+│   ├── transforms.ts                  # declarative transform system
 │   └── seed/                          # bundled seed adaptors (offline fallback)
-│       ├── budget-direct-home.json
-│       ├── nrma-home.json
-│       └── ...
+│       └── budget-direct-home.json
 │
 ├── content/
-│   ├── automation-engine.ts           # MODIFIED: auto/assist hybrid
-│   ├── interaction-recorder.ts        # NEW: captures user interactions
-│   ├── assist-overlay.ts              # NEW: floating assist UI
+│   ├── content-script.ts             # entry point: auto / hybrid / discovery routing
+│   ├── automation-engine.ts          # legacy adapter step execution
+│   ├── hybrid-automation-engine.ts   # auto/assist mode switching
+│   ├── discovery-engine.ts           # full-form discovery for new insurers
+│   ├── discovery-overlay.ts          # floating UI for discovery mode
+│   ├── interaction-recorder.ts       # captures user interactions (no PII)
+│   ├── assist-overlay.ts             # floating UI for single-step assist
+│   ├── field-matcher.ts              # field finding and filling
+│   ├── page-navigator.ts             # step/button detection, CAPTCHA
+│   └── dom-observer.ts               # MutationObserver wrappers
+│
+├── popup/
+│   ├── AddInsurer.tsx                # "Add New Insurer" bootstrap UI
+│   ├── ProviderSelector.tsx          # provider list with maturity badges
 │   └── ...
 │
-├── shared/
-│   └── contribution-types.ts          # NEW: contribution data types
-│
-└── api/                               # NEW: central service (separate deploy)
+└── api/                              # central service (separate deploy)
     ├── server.ts
     ├── routes/
     │   ├── adaptors.ts
-    │   └── contributions.ts
+    │   ├── contributions.ts
+    │   └── discovery.ts              # bootstrap + discovery session endpoints
     ├── services/
-    │   ├── contribution-processor.ts
-    │   └── confidence-scorer.ts
+    │   ├── contribution-processor.ts # existing step contribution processing
+    │   └── discovery-processor.ts    # merges discovery sessions into adaptors
     └── db/
-        └── schema.sql
+        └── schema.sql               # includes discovery_sessions table
 ```

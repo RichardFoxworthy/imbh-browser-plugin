@@ -71,6 +71,39 @@ FROM adaptors a
 LEFT JOIN step_health sh ON sh.adaptor_id = a.id
 GROUP BY a.id, a.provider, a.version, a.enabled;
 
+-- Discovery sessions (full-form recordings from zero-knowledge bootstrapping)
+CREATE TABLE discovery_sessions (
+  id              SERIAL PRIMARY KEY,
+  adaptor_id      TEXT NOT NULL REFERENCES adaptors(id),
+  session_id      TEXT NOT NULL UNIQUE,      -- client-generated UUID
+  plugin_version  TEXT NOT NULL,
+  steps           JSONB NOT NULL,            -- DiscoveredStep[] JSON
+  extraction_hints JSONB,                    -- ExtractionHints JSON (nullable)
+  started_at      TIMESTAMPTZ NOT NULL,
+  completed_at    TIMESTAMPTZ NOT NULL,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_discovery_adaptor ON discovery_sessions(adaptor_id);
+CREATE INDEX idx_discovery_session ON discovery_sessions(session_id);
+
+-- View: adaptor maturity overview
+CREATE VIEW adaptor_maturity AS
+SELECT
+  a.id AS adaptor_id,
+  a.provider,
+  a.version,
+  a.enabled,
+  jsonb_array_length(COALESCE(a.definition->'steps', '[]'::jsonb)) AS step_count,
+  COUNT(ds.id) AS discovery_sessions,
+  CASE
+    WHEN jsonb_array_length(COALESCE(a.definition->'steps', '[]'::jsonb)) = 0 THEN 'skeleton'
+    ELSE 'discovered'
+  END AS maturity
+FROM adaptors a
+LEFT JOIN discovery_sessions ds ON ds.adaptor_id = a.id
+GROUP BY a.id, a.provider, a.version, a.enabled;
+
 -- View: pending contributions to review
 CREATE VIEW pending_contributions AS
 SELECT

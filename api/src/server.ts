@@ -14,6 +14,7 @@ import express from 'express';
 import cors from 'cors';
 import { adaptorRoutes } from './routes/adaptors';
 import { contributionRoutes } from './routes/contributions';
+import { discoveryRoutes } from './routes/discovery';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -37,6 +38,7 @@ app.get('/api/health', (_req, res) => {
 // Routes
 app.use('/api/adaptors', adaptorRoutes);
 app.use('/api/adaptors', contributionRoutes);
+app.use('/api/adaptors', discoveryRoutes);
 
 // Start
 app.listen(PORT, () => {

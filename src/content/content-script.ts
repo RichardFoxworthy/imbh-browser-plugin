@@ -3,18 +3,22 @@
  * Injected into insurer websites. Listens for commands from the background
  * service worker and executes form automation.
  *
- * Supports two automation paths:
+ * Supports three automation paths:
  * - START_AUTOMATION: legacy path using static TypeScript adapters
  * - START_HYBRID_AUTOMATION: crowdsourced JSON adaptors with auto/assist mode
+ * - START_DISCOVERY: zero-knowledge full-form discovery for new insurers
  */
 
 import { executeAdapterSteps } from './automation-engine';
 import { executeHybridSteps } from './hybrid-automation-engine';
+import { startDiscovery } from './discovery-engine';
+import { showDiscoveryOverlay, hideDiscoveryOverlay } from './discovery-overlay';
 import type { AdapterStep, QuoteResult } from '../adapters/types';
-import type { AdaptorStep, ExtractionRules, StepContribution } from '../adaptors/types';
+import type { AdaptorStep, ExtractionRules, StepContribution, DiscoverySession } from '../adaptors/types';
 import type { UserProfile } from '../profile/types';
 import type { AutomationProgress } from './automation-engine';
 import type { HybridProgress, SelectorHealthEvent } from './hybrid-automation-engine';
+import type { DiscoveryProgress } from './discovery-engine';
 
 // ---------------------------------------------------------------------------
 // Message types
@@ -36,11 +40,21 @@ interface StartHybridAutomationMessage {
   profile: UserProfile;
 }
 
+interface StartDiscoveryMessage {
+  type: 'START_DISCOVERY';
+  adaptorId: string;
+  adaptorName: string;
+}
+
 interface PingMessage {
   type: 'PING';
 }
 
-type IncomingMessage = StartAutomationMessage | StartHybridAutomationMessage | PingMessage;
+type IncomingMessage =
+  | StartAutomationMessage
+  | StartHybridAutomationMessage
+  | StartDiscoveryMessage
+  | PingMessage;
 
 // ---------------------------------------------------------------------------
 // Message listener
@@ -60,6 +74,11 @@ chrome.runtime.onMessage.addListener(
 
     if (message.type === 'START_HYBRID_AUTOMATION') {
       handleHybridAutomation(message).then(sendResponse);
+      return true;
+    }
+
+    if (message.type === 'START_DISCOVERY') {
+      handleDiscovery(message).then(sendResponse);
       return true;
     }
 
@@ -136,6 +155,62 @@ async function handleHybridAutomation(
       success: false,
       quote: null,
       contributions: [],
+      error: err instanceof Error ? err.message : 'Unknown error',
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Discovery mode (zero-knowledge bootstrapping)
+// ---------------------------------------------------------------------------
+
+async function handleDiscovery(
+  message: StartDiscoveryMessage
+): Promise<{ success: boolean; session: DiscoverySession | null; error?: string }> {
+  const { adaptorId, adaptorName } = message;
+
+  function onProgress(progress: DiscoveryProgress) {
+    chrome.runtime.sendMessage({
+      type: 'DISCOVERY_PROGRESS',
+      adaptorId: progress.adaptorId,
+      adaptorName: progress.adaptorName,
+      stepCount: progress.stepCount,
+      status: progress.status,
+      message: progress.message,
+      currentPageUrl: progress.currentPageUrl,
+    });
+  }
+
+  try {
+    // Show the discovery overlay UI
+    showDiscoveryOverlay(adaptorName);
+
+    // Start the discovery engine — this resolves when the user
+    // completes the entire form or cancels
+    const result = await startDiscovery({
+      adaptorId,
+      adaptorName,
+      onProgress,
+    });
+
+    hideDiscoveryOverlay();
+
+    if (result.cancelled || !result.session) {
+      return { success: false, session: null, error: 'Discovery cancelled' };
+    }
+
+    // Submit the full discovery session to the background service worker
+    chrome.runtime.sendMessage({
+      type: 'SUBMIT_DISCOVERY',
+      session: result.session,
+    });
+
+    return { success: true, session: result.session };
+  } catch (err) {
+    hideDiscoveryOverlay();
+    return {
+      success: false,
+      session: null,
       error: err instanceof Error ? err.message : 'Unknown error',
     };
   }
