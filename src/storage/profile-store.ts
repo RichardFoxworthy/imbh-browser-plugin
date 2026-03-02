@@ -23,6 +23,10 @@ class ProfileStore {
     return this.passphrase !== null;
   }
 
+  getPassphrase(): string | null {
+    return this.passphrase;
+  }
+
   lock(): void {
     this.passphrase = null;
   }

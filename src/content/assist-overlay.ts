@@ -115,7 +115,7 @@ function createOverlay(): void {
           <rect x="2" y="6" width="10" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/>
           <path d="M4 6V4a3 3 0 016 0v2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
         </svg>
-        We only record page structure, never your personal data.
+        Your answers will be saved to your profile for future use. Only page structure (not your data) is shared to help other users.
       </div>
     </div>
     <div class="assist-actions">

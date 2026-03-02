@@ -9,6 +9,19 @@ export function resolvePath(obj: Record<string, any>, path: string): any {
   return path.split('.').reduce((acc, key) => acc?.[key], obj);
 }
 
+/** Sets a value at a dot-notation path, creating intermediate objects as needed. */
+export function setPath(obj: Record<string, any>, path: string, value: any): void {
+  const keys = path.split('.');
+  let current = obj;
+  for (let i = 0; i < keys.length - 1; i++) {
+    if (current[keys[i]] == null || typeof current[keys[i]] !== 'object') {
+      current[keys[i]] = {};
+    }
+    current = current[keys[i]];
+  }
+  current[keys[keys.length - 1]] = value;
+}
+
 /** Normalise text for fuzzy label matching: lowercase, strip punctuation and extra spaces. */
 export function normaliseLabel(text: string): string {
   return text

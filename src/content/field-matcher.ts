@@ -107,6 +107,69 @@ export async function fillField(
   }
 }
 
+/**
+ * Read the current DOM value from a form field, keyed by action type.
+ * Inverse of fillField — used to capture user's manual answers during assist mode.
+ */
+export function readFieldValue(
+  element: Element,
+  action: FieldMapping['action']
+): string | null {
+  try {
+    switch (action) {
+      case 'type':
+      case 'typeAndSelect':
+        return (element as HTMLInputElement).value || null;
+
+      case 'select':
+        return (element as HTMLSelectElement).value || null;
+
+      case 'click': {
+        // Find the container (same logic as clickByValue)
+        const container = element.parentElement?.closest(
+          'form, [class*="step"], [class*="page"], [class*="question"], main, section'
+        ) || element.parentElement;
+        if (!container) return null;
+        const candidates = container.querySelectorAll(
+          'button, [role="button"], a.btn, [class*="option"], [class*="choice"]'
+        );
+        for (const btn of candidates) {
+          const el = btn as HTMLElement;
+          if (
+            el.getAttribute('aria-pressed') === 'true' ||
+            el.classList.contains('active') ||
+            el.classList.contains('selected') ||
+            /active/.test(el.className)
+          ) {
+            return el.textContent?.trim() || null;
+          }
+        }
+        return null;
+      }
+
+      case 'radio': {
+        const radios = element.querySelectorAll('input[type="radio"]');
+        for (const radio of radios) {
+          const r = radio as HTMLInputElement;
+          if (r.checked) {
+            const label = r.closest('label') || document.querySelector(`label[for="${r.id}"]`);
+            return label?.textContent?.trim() || r.value || null;
+          }
+        }
+        return null;
+      }
+
+      case 'checkbox':
+        return String((element as HTMLInputElement).checked);
+
+      default:
+        return null;
+    }
+  } catch {
+    return null;
+  }
+}
+
 /** Type a value character by character with random delays. */
 async function typeValue(input: HTMLInputElement, value: string): Promise<boolean> {
   // Clear existing value

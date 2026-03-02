@@ -10,6 +10,7 @@
 
 import { executeAdapterSteps } from './automation-engine';
 import { executeHybridSteps } from './hybrid-automation-engine';
+import { setPath } from '../shared/utils';
 import type { AdapterStep, QuoteResult } from '../adapters/types';
 import type { AdaptorStep, ExtractionRules, StepContribution } from '../adaptors/types';
 import type { UserProfile } from '../profile/types';
@@ -40,7 +41,16 @@ interface PingMessage {
   type: 'PING';
 }
 
-type IncomingMessage = StartAutomationMessage | StartHybridAutomationMessage | PingMessage;
+interface ProfileUpdatedMessage {
+  type: 'PROFILE_UPDATED';
+  updates: Array<{ profilePath: string; value: any }>;
+}
+
+type IncomingMessage = StartAutomationMessage | StartHybridAutomationMessage | PingMessage | ProfileUpdatedMessage;
+
+// Active profile reference — shared with the automation engine so
+// cross-tab updates are immediately visible to fillStepFields
+let activeProfile: UserProfile | null = null;
 
 // ---------------------------------------------------------------------------
 // Message listener
@@ -63,6 +73,15 @@ chrome.runtime.onMessage.addListener(
       return true;
     }
 
+    if (message.type === 'PROFILE_UPDATED') {
+      if (activeProfile) {
+        for (const { profilePath, value } of message.updates) {
+          setPath(activeProfile as any, profilePath, value);
+        }
+      }
+      return false;
+    }
+
     return false;
   }
 );
@@ -75,6 +94,7 @@ async function handleHybridAutomation(
   message: StartHybridAutomationMessage
 ): Promise<{ success: boolean; quote: QuoteResult | null; contributions: StepContribution[]; error?: string }> {
   const { adaptorId, adaptorName, steps, extractionRules, profile } = message;
+  activeProfile = profile;
 
   function extractQuote(doc: Document): QuoteResult | null {
     // Try adaptor-specific extraction rules first

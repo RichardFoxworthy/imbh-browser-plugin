@@ -19,6 +19,8 @@ import { initSync, syncAdaptors, flushContributions } from '../adaptors/adaptor-
 import { getAllAdaptorDefinitions, getAdaptorsByProduct, checkAdaptorHealth, getAdaptorConfidence } from '../adaptors/adaptor-runtime';
 import { queueContribution } from '../adaptors/adaptor-cache';
 import { getDb } from '../storage/db';
+import { profileStore } from '../storage/profile-store';
+import { setPath } from '../shared/utils';
 import type { UserProfile } from '../profile/types';
 import type { QuoteRunItem, QuoteRun } from '../quoting/types';
 import type { StepContribution } from '../adaptors/types';
@@ -26,6 +28,10 @@ import type { ProductType } from '../adapters/types';
 
 // Current run state — persisted on each update
 let currentRun: QuoteRun | null = null;
+
+// In-memory profile and passphrase for the active run
+let currentProfile: UserProfile | null = null;
+let profilePassphrase: string | null = null;
 
 // Maps adapter IDs to their open tab IDs during a run
 const adapterTabMap = new Map<string, number>();
@@ -75,6 +81,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     case 'SYNC_ADAPTORS':
       syncAdaptors().then(sendResponse);
+      return true;
+
+    case 'PROFILE_FIELD_UPDATE':
+      handleProfileFieldUpdate(message).then(sendResponse);
       return true;
 
     case 'FOCUS_ADAPTER_TAB':
@@ -151,8 +161,16 @@ async function handleStartQuoteRun(message: {
   adapterIds: string[];
   profile: UserProfile;
   productType: 'home' | 'motor';
+  passphrase?: string;
 }) {
-  const { adapterIds, profile, productType } = message;
+  const { adapterIds, profile, productType, passphrase } = message;
+
+  // Store profile and passphrase for in-flight updates
+  currentProfile = profile;
+  if (passphrase) {
+    profilePassphrase = passphrase;
+    profileStore.initWithPassphrase(passphrase);
+  }
 
   // Resolve each requested adapter — try JSON first, then legacy
   const allJsonAdaptors = await getAllAdaptorDefinitions();
@@ -332,6 +350,40 @@ function handleFocusAdapterTab(message: { adapterId: string }) {
       if (tab.windowId) chrome.windows.update(tab.windowId, { focused: true });
     }).catch(() => {});
   }
+}
+
+/**
+ * Handle profile field updates from content scripts.
+ * Patches in-memory profile, persists to encrypted store, and
+ * broadcasts to other active adapter tabs.
+ */
+async function handleProfileFieldUpdate(message: {
+  updates: Array<{ profilePath: string; value: any }>;
+}) {
+  if (!currentProfile) return { success: false };
+
+  for (const { profilePath, value } of message.updates) {
+    setPath(currentProfile as any, profilePath, value);
+  }
+
+  // Persist to encrypted IndexedDB
+  if (profilePassphrase) {
+    try {
+      await profileStore.saveProfile(currentProfile);
+    } catch (err) {
+      console.error('[service-worker] Failed to persist profile update:', err);
+    }
+  }
+
+  // Broadcast to all active adapter tabs
+  for (const [, tabId] of adapterTabMap) {
+    chrome.tabs.sendMessage(tabId, {
+      type: 'PROFILE_UPDATED',
+      updates: message.updates,
+    }).catch(() => {});
+  }
+
+  return { success: true };
 }
 
 /** Broadcast a message to all extension views (popup, sidepanel). */

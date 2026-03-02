@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '../shared/ui/Button';
 import { Card } from '../shared/ui/Card';
+import { profileStore } from '../storage/profile-store';
 import type { UserProfile } from '../profile/types';
 
 interface AdapterInfo {
@@ -75,6 +76,7 @@ export function ProviderSelector({ profile, onStartQuoting }: Props) {
         adapterIds: Array.from(selected),
         profile,
         productType,
+        passphrase: profileStore.getPassphrase(),
       });
       // Open side panel from popup context — requires user gesture which
       // we have here (button click handler). The service worker can't do

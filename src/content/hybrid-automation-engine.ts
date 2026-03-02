@@ -16,10 +16,10 @@
  * to the central adaptor service so future users benefit.
  */
 
-import { findField, fillField } from './field-matcher';
+import { findField, fillField, readFieldValue } from './field-matcher';
 import { clickNext, waitForPageTransition, detectCaptcha, dismissModals } from './page-navigator';
 import { waitForElement, waitForPageStable } from './dom-observer';
-import { resolvePath, randomDelay, uid } from '../shared/utils';
+import { resolvePath, setPath, randomDelay, uid } from '../shared/utils';
 import { showAssistOverlay, hideAssistOverlay } from './assist-overlay';
 import { buildContribution, analyseRecording } from './interaction-recorder';
 import { applyTransform, type TransformSpec } from '../adaptors/transforms';
@@ -447,6 +447,12 @@ export async function executeHybridSteps(
         contributions.push(contribution);
       }
 
+      // Capture manually-entered values for skipped fields
+      if (assistResult.completed && step.fields.length > 0) {
+        const allPaths = step.fields.map((f) => f.profilePath);
+        await captureAssistValues(step, allPaths, profile);
+      }
+
       mode = 'auto';
       completedStepIds.add(step.id);
       continue;
@@ -496,6 +502,11 @@ export async function executeHybridSteps(
         contribution.stepId = step.id;
         contribution.type = 'update';
         contributions.push(contribution);
+      }
+
+      // Capture manually-entered values for skipped fields
+      if (assistResult.completed) {
+        await captureAssistValues(step, skippedFields, profile);
       }
 
       mode = 'auto';
@@ -637,6 +648,12 @@ async function executeSequentialSteps(
         addLog('assist', 'User skipped this step', false);
       }
 
+      // Capture manually-entered values for skipped fields
+      if (assistResult.completed && step.fields.length > 0) {
+        const allPaths = step.fields.map((f) => f.profilePath);
+        await captureAssistValues(step, allPaths, profile);
+      }
+
       mode = 'auto';
       completedStepIds.add(step.id);
       continue;
@@ -708,6 +725,11 @@ async function executeSequentialSteps(
         contribution.stepId = step.id;
         contribution.type = 'update';
         contributions.push(contribution);
+      }
+
+      // Capture manually-entered values for skipped fields
+      if (assistResult.completed) {
+        await captureAssistValues(step, skippedFields, profile);
       }
 
       mode = 'auto';
@@ -901,6 +923,67 @@ async function fillStepFields(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * After assist mode, read DOM values for skipped fields and save them
+ * back to the profile so they auto-fill on subsequent steps/runs.
+ */
+async function captureAssistValues(
+  step: AdaptorStep,
+  skippedFields: string[],
+  profile: UserProfile
+): Promise<void> {
+  // Count how many times each profilePath appears in this step —
+  // duplicates indicate split fields (e.g. DD/MM/YYYY) which can't
+  // be reliably reversed
+  const pathCounts = new Map<string, number>();
+  for (const fm of step.fields) {
+    pathCounts.set(fm.profilePath, (pathCounts.get(fm.profilePath) || 0) + 1);
+  }
+
+  const updates: Array<{ profilePath: string; value: any }> = [];
+
+  for (const profilePath of skippedFields) {
+    // Skip duplicate paths (split fields)
+    if ((pathCounts.get(profilePath) || 0) > 1) continue;
+
+    const mapping = step.fields.find((f) => f.profilePath === profilePath);
+    if (!mapping) continue;
+
+    // Skip fields with transforms — can't reliably reverse
+    if (mapping.transform) continue;
+
+    const el = await findField(mapping);
+    if (!el) continue;
+
+    const raw = readFieldValue(el, mapping.action);
+    if (raw == null || raw === '') continue;
+
+    // Normalise common value types
+    let value: any = raw;
+    if (raw === 'true' || raw === 'false') {
+      value = raw === 'true';
+    } else if (raw.toLowerCase() === 'yes') {
+      value = true;
+    } else if (raw.toLowerCase() === 'no') {
+      value = false;
+    } else if (/^\d+$/.test(raw)) {
+      value = Number(raw);
+    }
+
+    updates.push({ profilePath, value });
+    // Patch local in-memory profile immediately
+    setPath(profile as any, profilePath, value);
+  }
+
+  if (updates.length > 0) {
+    // Notify service worker to persist and broadcast
+    chrome.runtime.sendMessage({
+      type: 'PROFILE_FIELD_UPDATE',
+      updates,
+    }).catch(() => {});
+  }
+}
 
 async function waitForCaptchaResolution(timeoutMs: number): Promise<boolean> {
   const start = Date.now();
