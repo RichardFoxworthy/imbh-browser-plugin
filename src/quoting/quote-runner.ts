@@ -14,6 +14,7 @@ import { uid } from '../shared/utils';
 export interface QuoteRunnerCallbacks {
   onItemUpdate: (item: QuoteRunItem) => void;
   onRunComplete: (run: QuoteRun) => void;
+  onTabCreated?: (adapterId: string, tabId: number) => void;
 }
 
 /**
@@ -76,6 +77,8 @@ export async function runQuotes(
       });
 
       if (!tab.id) throw new Error('Failed to create tab');
+
+      callbacks.onTabCreated?.(adapter.id, tab.id);
 
       // Wait for page to load
       await waitForTabLoad(tab.id);

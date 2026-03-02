@@ -5,6 +5,7 @@ import { QuoteProgress } from './QuoteProgress';
 import { Settings } from './Settings';
 import { Onboarding } from './Onboarding';
 import { UnlockPrompt } from './UnlockPrompt';
+import { Button } from '../shared/ui/Button';
 import { profileStore } from '../storage/profile-store';
 import type { UserProfile } from '../profile/types';
 
@@ -131,12 +132,22 @@ export function Popup() {
           />
         )}
         {view === 'quoting' && (
-          <QuoteProgress
-            onComplete={() => {
-              // Open side panel for comparison
-              (chrome.sidePanel as any)?.open?.({});
-            }}
-          />
+          <div className="text-center py-8 space-y-4">
+            <div className="text-3xl">&#x1F4CA;</div>
+            <p className="text-sm text-gray-700">
+              Quotes are running in the side panel.
+            </p>
+            <p className="text-xs text-gray-500">
+              You can close this popup — progress is visible in the side panel on the right.
+            </p>
+            <Button
+              variant="outline"
+              onClick={() => setView('providers')}
+              className="w-full"
+            >
+              Back to Providers
+            </Button>
+          </div>
         )}
         {view === 'settings' && <Settings />}
       </main>

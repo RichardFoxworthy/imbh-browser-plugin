@@ -27,6 +27,9 @@ import type { ProductType } from '../adapters/types';
 // Current run state — persisted on each update
 let currentRun: QuoteRun | null = null;
 
+// Maps adapter IDs to their open tab IDs during a run
+const adapterTabMap = new Map<string, number>();
+
 // ---------------------------------------------------------------------------
 // Initialise adaptor sync on startup
 // ---------------------------------------------------------------------------
@@ -70,6 +73,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     case 'SYNC_ADAPTORS':
       syncAdaptors().then(sendResponse);
       return true;
+
+    case 'FOCUS_ADAPTER_TAB':
+      handleFocusAdapterTab(message);
+      return false;
 
     default:
       return false;
@@ -200,13 +207,26 @@ async function handleStartQuoteRun(message: {
     productType,
   };
 
+  // Auto-open the side panel so progress is visible even if the popup closes
+  try {
+    await (chrome.sidePanel as any)?.open?.({});
+  } catch {
+    // Side panel API may not be available or may require user gesture
+  }
+
   // Start the quote run in the background — don't await so sendResponse
   // returns immediately and the popup can transition to the progress view
+  adapterTabMap.clear();
   runQuotes(adaptersForRunner, profile, productType, {
+    onTabCreated(adapterId: string, tabId: number) {
+      adapterTabMap.set(adapterId, tabId);
+    },
     onItemUpdate(item: QuoteRunItem) {
+      const tabId = adapterTabMap.get(item.adapterId);
       broadcastMessage({
         type: 'QUOTE_ITEM_UPDATE',
         item,
+        tabId,
       });
 
       if (item.status === 'completed' && item.result) {
@@ -215,6 +235,7 @@ async function handleStartQuoteRun(message: {
     },
     onRunComplete(run: QuoteRun) {
       currentRun = run;
+      adapterTabMap.clear();
       broadcastMessage({
         type: 'QUOTE_RUN_COMPLETE',
         run,
@@ -297,6 +318,17 @@ async function handleHealthChecks() {
   }
 
   return { results };
+}
+
+function handleFocusAdapterTab(message: { adapterId: string }) {
+  const tabId = adapterTabMap.get(message.adapterId);
+  if (tabId != null) {
+    chrome.tabs.update(tabId, { active: true }).catch(() => {});
+    // Also focus the window containing the tab
+    chrome.tabs.get(tabId).then((tab) => {
+      if (tab.windowId) chrome.windows.update(tab.windowId, { focused: true });
+    }).catch(() => {});
+  }
 }
 
 /** Broadcast a message to all extension views (popup, sidepanel). */
