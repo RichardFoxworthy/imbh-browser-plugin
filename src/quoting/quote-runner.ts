@@ -147,11 +147,15 @@ export async function runQuotes(
 
       item.completedAt = new Date().toISOString();
 
-      // Close the tab
-      try {
-        await chrome.tabs.remove(tab.id);
-      } catch {
-        // Tab may already be closed
+      // Close the tab on success/decline; keep it open on error so the
+      // user can inspect why the page failed (e.g. Cloudflare block,
+      // blank page, VPN issues).
+      if (item.status !== 'error') {
+        try {
+          await chrome.tabs.remove(tab.id);
+        } catch {
+          // Tab may already be closed
+        }
       }
     } catch (err) {
       item.status = 'error';

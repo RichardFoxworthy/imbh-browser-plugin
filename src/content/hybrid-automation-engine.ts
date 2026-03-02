@@ -315,12 +315,11 @@ export async function executeHybridSteps(
   // Wait for the initial page to reach a recognized step URL.
   // Some insurers redirect through transient pages (e.g. #!/referral,
   // landing trackers) before the actual form starts. We poll for a URL
-  // change rather than immediately entering the step-detection loop.
+  // match rather than immediately entering the step-detection loop.
   {
     const initialMatch = matchStepToUrl(steps, completedStepIds, window.location.href);
     if (!initialMatch) {
-      const initialHash = window.location.hash || window.location.pathname;
-      addLog('init', `Initial URL (${initialHash}) doesn't match any step — waiting for form to load`, true);
+      addLog('init', `Initial URL (${window.location.hash || window.location.pathname}) doesn't match any step — waiting for form to load`, true);
       emitProgress(0, 'Loading', 'running', 'Waiting for form to load…');
 
       const waitStart = Date.now();
@@ -330,30 +329,23 @@ export async function executeHybridSteps(
       while (Date.now() - waitStart < maxWaitMs) {
         await new Promise((r) => setTimeout(r, 1500));
 
-        // Primary: URL now matches a known step
         if (matchStepToUrl(steps, completedStepIds, window.location.href)) {
-          found = true;
-          break;
-        }
-
-        // Secondary: URL hash changed to something different from the
-        // initial landing hash — the SPA navigated, worth re-entering
-        // the main loop even if the new URL isn't a known step
-        const currentHash = window.location.hash || window.location.pathname;
-        if (currentHash !== initialHash) {
-          addLog('init', `URL changed from ${initialHash} to ${currentHash}`, true);
           found = true;
           break;
         }
       }
 
       if (!found) {
-        addLog('init', 'Form URL never appeared — page may have failed to load', false);
+        const bodyText = (document.body?.innerText || '').trim();
+        const hint = bodyText.length < 50
+          ? ' The page appears blank — the insurer may be blocking this connection (VPN, firewall, or bot detection).'
+          : '';
+        addLog('init', `Form URL never appeared after ${maxWaitMs / 1000}s — page may have failed to load`, false);
         emitProgress(0, 'Error', 'error',
-          'The insurer page did not load the expected form. It may be temporarily unavailable.');
+          `The insurer page did not load the expected form.${hint}`);
         return {
           success: false, quote: null, log, contributions,
-          error: 'Insurer form did not load (stuck on landing/referral page)',
+          error: `Insurer form did not load (stuck on landing/referral page).${hint}`,
         };
       }
     }
