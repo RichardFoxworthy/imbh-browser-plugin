@@ -12,14 +12,16 @@ interface AdapterInfo {
   enabled: boolean;
   confidence?: number;   // 0–1, from crowdsourced adaptor system
   source?: 'crowdsourced' | 'legacy';
+  maturity?: 'skeleton' | 'discovered' | 'emerging' | 'usable' | 'stable';
 }
 
 interface Props {
   profile: UserProfile | null;
   onStartQuoting: () => void;
+  onAddInsurer?: () => void;
 }
 
-export function ProviderSelector({ profile, onStartQuoting }: Props) {
+export function ProviderSelector({ profile, onStartQuoting, onAddInsurer }: Props) {
   const [adapters, setAdapters] = useState<AdapterInfo[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [productType, setProductType] = useState<'home' | 'motor'>('home');
@@ -166,11 +168,16 @@ export function ProviderSelector({ profile, onStartQuoting }: Props) {
                     <div className="text-sm font-medium text-gray-900 truncate">
                       {adapter.provider}
                     </div>
-                    <div className="text-xs text-gray-500 truncate">
-                      {adapter.name}
-                      {adapter.confidence != null && adapter.confidence < 0.5 && (
-                        <span className="ml-1 text-amber-500" title="May need manual help">
-                          — may need your help
+                    <div className="flex items-center gap-1 text-xs text-gray-500">
+                      <span className="truncate">{adapter.name}</span>
+                      {adapter.confidence != null && adapter.confidence === 0 && (
+                        <span className="shrink-0 px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 text-[10px] font-medium">
+                          NEW
+                        </span>
+                      )}
+                      {adapter.confidence != null && adapter.confidence > 0 && adapter.confidence < 0.3 && (
+                        <span className="shrink-0 px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-[10px] font-medium">
+                          LEARNING
                         </span>
                       )}
                     </div>
@@ -200,6 +207,16 @@ export function ProviderSelector({ profile, onStartQuoting }: Props) {
           <p className="text-xs text-gray-400 text-center">
             Each insurer's site will open in a background tab. This may take a few minutes.
           </p>
+
+          {/* Add new insurer */}
+          {onAddInsurer && (
+            <button
+              onClick={onAddInsurer}
+              className="w-full text-sm text-purple-600 hover:text-purple-800 py-2 border border-dashed border-purple-300 rounded-lg hover:bg-purple-50 transition-colors"
+            >
+              + Add a new insurer
+            </button>
+          )}
         </>
       )}
     </div>

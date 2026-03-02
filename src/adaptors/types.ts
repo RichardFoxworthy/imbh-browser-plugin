@@ -127,10 +127,10 @@ export interface PendingContribution {
 }
 
 // ---------------------------------------------------------------------------
-// Auto/Assist mode state
+// Auto/Assist/Discovery mode state
 // ---------------------------------------------------------------------------
 
-export type NavigationMode = 'auto' | 'assist' | 'paused-captcha';
+export type NavigationMode = 'auto' | 'assist' | 'discovery' | 'paused-captcha';
 
 export interface NavigationState {
   adaptorId: string;
@@ -140,3 +140,79 @@ export interface NavigationState {
   currentStepId: string | null;
   assistReason?: string;            // why we switched to assist mode
 }
+
+// ---------------------------------------------------------------------------
+// Zero-knowledge bootstrap — skeleton adaptors
+// ---------------------------------------------------------------------------
+
+/**
+ * A skeleton adaptor is the minimal definition needed to bootstrap
+ * an entirely new insurer from zero knowledge. It has no steps,
+ * no field mappings, and no extraction rules. Everything is
+ * crowdsourced through discovery mode.
+ */
+export interface SkeletonAdaptorRequest {
+  provider: string;                 // e.g. 'Suncorp'
+  productType: ProductType;
+  startUrl: string;                 // the URL to begin the quote form
+  logoUrl?: string;
+}
+
+/**
+ * A complete discovery session recording — captures the entire
+ * user journey through an unknown form from start to finish.
+ */
+export interface DiscoverySession {
+  adaptorId: string;
+  sessionId: string;                // unique per discovery run
+  pluginVersion: string;
+  startedAt: string;
+  completedAt: string;
+  steps: DiscoveredStep[];
+  extractionHints?: ExtractionHints;
+}
+
+/**
+ * A single step discovered during a full-form discovery session.
+ * Unlike StepContribution (which updates one step at a time),
+ * this captures the full context of a step including its position
+ * in the overall flow.
+ */
+export interface DiscoveredStep {
+  ordinal: number;                  // 0-based position in the flow
+  pageUrl: string;                  // sanitised URL pattern
+  pageTitle: string;
+  suggestedName: string;            // auto-inferred step name
+  waitForSelector: string;          // best selector for detecting this page
+  fallbackWaitSelectors: string[];
+  fields: DiscoveredField[];
+  nextButton?: {
+    selector: string;
+    text: string;
+  };
+  durationMs: number;               // how long the user spent on this step
+}
+
+/**
+ * Hints about which page elements contain the quote result.
+ * Captured when the user identifies the results page during discovery.
+ */
+export interface ExtractionHints {
+  premiumSelector?: string;
+  premiumText?: string;
+  excessSelector?: string;
+  excessText?: string;
+  inclusionSelectors?: string[];
+  pageUrl: string;
+}
+
+/**
+ * Maturity levels for an adaptor, derived from the volume and
+ * consistency of discovery contributions.
+ */
+export type AdaptorMaturity =
+  | 'skeleton'       // just created, zero steps
+  | 'discovered'     // at least one full discovery session submitted
+  | 'emerging'       // multiple users have contributed, steps are forming
+  | 'usable'         // quorum reached on enough steps to attempt auto-fill
+  | 'stable';        // high confidence across all steps

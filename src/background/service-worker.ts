@@ -15,15 +15,16 @@
 import { adapterRegistry } from '../adapters/adapter-registry';
 import { runQuotes } from '../quoting/quote-runner';
 import { saveQuoteResult } from '../quoting/quote-store';
-import { initSync, syncAdaptors, flushContributions } from '../adaptors/adaptor-sync';
+import { initSync, syncAdaptors, flushContributions, submitDiscoverySession, bootstrapAdaptor } from '../adaptors/adaptor-sync';
 import { getAllAdaptorDefinitions, getAdaptorsByProduct, checkAdaptorHealth, getAdaptorConfidence } from '../adaptors/adaptor-runtime';
-import { queueContribution } from '../adaptors/adaptor-cache';
+import { queueContribution, cacheAdaptor } from '../adaptors/adaptor-cache';
+import { isSkeleton, getAdaptorMaturity } from '../adaptors/skeleton-factory';
 import { getDb } from '../storage/db';
 import { profileStore } from '../storage/profile-store';
 import { setPath } from '../shared/utils';
 import type { UserProfile } from '../profile/types';
 import type { QuoteRunItem, QuoteRun } from '../quoting/types';
-import type { StepContribution } from '../adaptors/types';
+import type { StepContribution, DiscoverySession, SkeletonAdaptorRequest } from '../adaptors/types';
 import type { ProductType } from '../adapters/types';
 
 // Current run state — persisted on each update
@@ -91,6 +92,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       handleFocusAdapterTab(message);
       return false;
 
+    case 'BOOTSTRAP_ADAPTOR':
+      handleBootstrapAdaptor(message).then(sendResponse);
+      return true;
+
+    case 'START_DISCOVERY_TAB':
+      handleStartDiscoveryTab(message).then(sendResponse);
+      return true;
+
+    case 'SUBMIT_DISCOVERY':
+      handleSubmitDiscovery(message).then(sendResponse);
+      return true;
+
+    case 'DISCOVERY_PROGRESS':
+      broadcastMessage({ type: 'DISCOVERY_PROGRESS', ...message });
+      return false;
+
     default:
       return false;
   }
@@ -135,6 +152,8 @@ async function handleGetAdapters(message: { productType?: string }) {
       enabled: a.enabled,
       startUrl: a.startUrl,
       confidence: getAdaptorConfidence(a),
+      maturity: getAdaptorMaturity(a),
+      isSkeleton: isSkeleton(a),
       source: 'crowdsourced' as const,
     })),
     ...legacyOnly.map((a) => ({
@@ -146,6 +165,8 @@ async function handleGetAdapters(message: { productType?: string }) {
       enabled: a.enabled,
       startUrl: a.startUrl,
       confidence: 1,
+      maturity: 'stable' as const,
+      isSkeleton: false,
       source: 'legacy' as const,
     })),
   ];
@@ -389,6 +410,148 @@ async function handleProfileFieldUpdate(message: {
   }
 
   return { success: true };
+}
+
+// ---------------------------------------------------------------------------
+// Zero-knowledge bootstrap & discovery handlers
+// ---------------------------------------------------------------------------
+
+/**
+ * Create a skeleton adaptor from a URL, provider name, and product type.
+ * Registers it both with the central API and in the local cache.
+ */
+async function handleBootstrapAdaptor(message: {
+  provider: string;
+  productType: string;
+  startUrl: string;
+  logoUrl?: string;
+}) {
+  const request: SkeletonAdaptorRequest = {
+    provider: message.provider,
+    productType: message.productType as ProductType,
+    startUrl: message.startUrl,
+    logoUrl: message.logoUrl,
+  };
+
+  try {
+    // Try to register with the central API
+    const result = await bootstrapAdaptor(request);
+
+    // Also cache locally so it's immediately usable
+    if (result.definition) {
+      await cacheAdaptor(result.definition);
+    }
+
+    return {
+      success: true,
+      adaptorId: result.adaptorId,
+      created: result.created,
+      definition: result.definition,
+    };
+  } catch (err) {
+    // If the API is unavailable, create locally from the skeleton factory
+    const { createSkeletonAdaptor } = await import('../adaptors/skeleton-factory');
+    const skeleton = createSkeletonAdaptor(request);
+    await cacheAdaptor(skeleton);
+
+    return {
+      success: true,
+      adaptorId: skeleton.id,
+      created: true,
+      definition: skeleton,
+      offlineMode: true,
+    };
+  }
+}
+
+/**
+ * Open an insurer's start URL in a new tab and initiate discovery mode.
+ * The content script will show the discovery overlay and record everything.
+ */
+async function handleStartDiscoveryTab(message: {
+  adaptorId: string;
+  adaptorName: string;
+  startUrl: string;
+}) {
+  const { adaptorId, adaptorName, startUrl } = message;
+
+  try {
+    // Open the insurer's quote page
+    const tab = await chrome.tabs.create({ url: startUrl, active: true });
+
+    if (!tab.id) {
+      return { success: false, error: 'Could not create tab' };
+    }
+
+    // Wait for the tab to finish loading
+    await new Promise<void>((resolve) => {
+      const listener = (
+        tabId: number,
+        changeInfo: { status?: string }
+      ) => {
+        if (tabId === tab.id && changeInfo.status === 'complete') {
+          chrome.tabs.onUpdated.removeListener(listener);
+          resolve();
+        }
+      };
+      chrome.tabs.onUpdated.addListener(listener);
+
+      // Timeout after 30 seconds
+      setTimeout(() => {
+        chrome.tabs.onUpdated.removeListener(listener);
+        resolve();
+      }, 30000);
+    });
+
+    // Wait a bit for the content script to initialize
+    await new Promise((r) => setTimeout(r, 1500));
+
+    // Send START_DISCOVERY to the content script
+    const response = await chrome.tabs.sendMessage(tab.id, {
+      type: 'START_DISCOVERY',
+      adaptorId,
+      adaptorName,
+    });
+
+    return { success: true, tabId: tab.id, response };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'Failed to start discovery',
+    };
+  }
+}
+
+/**
+ * Handle a completed discovery session from the content script.
+ * Submits it to the central API and updates the local cache.
+ */
+async function handleSubmitDiscovery(message: {
+  session: DiscoverySession;
+}) {
+  const { session } = message;
+
+  try {
+    // Submit to central API
+    await submitDiscoverySession(session);
+
+    // Refresh the adaptor from the API (it may have been updated)
+    await syncAdaptors();
+
+    broadcastMessage({
+      type: 'DISCOVERY_COMPLETE',
+      adaptorId: session.adaptorId,
+      stepsDiscovered: session.steps.length,
+    });
+
+    return { success: true, stepsDiscovered: session.steps.length };
+  } catch (err) {
+    console.error('[service-worker] Failed to submit discovery:', err);
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'Submission failed',
+    };
+  }
 }
 
 /** Broadcast a message to all extension views (popup, sidepanel). */

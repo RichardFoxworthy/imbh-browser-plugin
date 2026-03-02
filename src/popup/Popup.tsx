@@ -5,17 +5,19 @@ import { QuoteProgress } from './QuoteProgress';
 import { Settings } from './Settings';
 import { Onboarding } from './Onboarding';
 import { UnlockPrompt } from './UnlockPrompt';
+import { AddInsurer } from './AddInsurer';
 import { Button } from '../shared/ui/Button';
 import { profileStore } from '../storage/profile-store';
 import type { UserProfile } from '../profile/types';
 
-type View = 'onboarding' | 'unlock' | 'profile' | 'providers' | 'quoting' | 'settings';
+type View = 'onboarding' | 'unlock' | 'profile' | 'providers' | 'quoting' | 'settings' | 'add-insurer' | 'discovery-active';
 
 export function Popup() {
   const [view, setView] = useState<View>('onboarding');
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [pendingView, setPendingView] = useState<View | null>(null);
+  const [discoveryAdaptorId, setDiscoveryAdaptorId] = useState<string | null>(null);
 
   useEffect(() => {
     checkExistingProfile();
@@ -129,6 +131,7 @@ export function Popup() {
           <ProviderSelector
             profile={profile}
             onStartQuoting={handleStartQuoting}
+            onAddInsurer={() => setView('add-insurer')}
           />
         )}
         {view === 'quoting' && (
@@ -147,6 +150,36 @@ export function Popup() {
             >
               Back to Providers
             </Button>
+          </div>
+        )}
+        {view === 'add-insurer' && (
+          <AddInsurer
+            onBack={() => setView('providers')}
+            onDiscoveryStarted={(adaptorId) => {
+              setDiscoveryAdaptorId(adaptorId);
+              setView('discovery-active');
+            }}
+          />
+        )}
+        {view === 'discovery-active' && (
+          <div className="flex flex-col items-center gap-4 py-8 text-center">
+            <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="text-purple-600">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
+                <circle cx="12" cy="12" r="4" fill="currentColor"/>
+              </svg>
+            </div>
+            <h3 className="text-lg font-semibold text-slate-800">Discovery in Progress</h3>
+            <p className="text-sm text-slate-600 px-4">
+              Fill out the insurer's form in the open tab. The discovery overlay will
+              guide you. When you're done, the adaptor will be built automatically.
+            </p>
+            <button
+              onClick={() => setView('providers')}
+              className="text-sm text-purple-600 hover:text-purple-800 underline"
+            >
+              Back to providers
+            </button>
           </div>
         )}
         {view === 'settings' && <Settings />}
