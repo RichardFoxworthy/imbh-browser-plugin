@@ -21,13 +21,22 @@ export function SidePanel() {
     chrome.runtime.sendMessage({ type: 'GET_QUOTE_RUN_STATUS' }, (response) => {
       if (response?.run) {
         setItems(response.run.items);
+
+        // Restore tab ID mapping if available
+        if (response.tabIds) {
+          setTabIdMap(response.tabIds);
+        }
+
+        // Collect any already-completed results
+        const results = response.run.items
+          .filter((i: QuoteRunItem) => i.status === 'completed' && i.result)
+          .map((i: QuoteRunItem) => i.result!);
+        if (results.length > 0) {
+          setCompletedQuotes(results);
+        }
+
         if (response.run.completedAt) {
           setIsComplete(true);
-          // Collect completed results
-          const results = response.run.items
-            .filter((i: QuoteRunItem) => i.status === 'completed' && i.result)
-            .map((i: QuoteRunItem) => i.result!);
-          setCompletedQuotes(results);
           setView('results');
         } else {
           setView('progress');

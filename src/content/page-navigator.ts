@@ -172,8 +172,10 @@ const MODAL_CLOSE_SELECTORS = [
   '[class*="popup"] [class*="close"]',
   '[class*="overlay"] [class*="close"]',
   '[class*="dialog"] [class*="close"]',
-  // Generic dialog close buttons
-  '[role="dialog"] button',
+  // Scoped dialog close buttons — only match explicit close/dismiss buttons
+  '[role="dialog"] [aria-label="Close"]',
+  '[role="dialog"] button[class*="close"]',
+  '[role="dialog"] button[class*="dismiss"]',
 ];
 
 /** Keywords in class/id that indicate a live chat or contact widget (not a blocking modal). */
@@ -192,10 +194,13 @@ const CHAT_WIDGET_TEXT_PATTERNS = [
 
 /** Check if an element or its ancestors look like a chat/contact widget. */
 function isChatWidget(el: Element): boolean {
-  // Check text content of the popup/modal itself
-  const closestModal = el.closest('[class*="modal"], [class*="popup"], [class*="overlay"], [class*="dialog"], [role="dialog"]');
-  if (closestModal) {
-    const text = (closestModal.textContent || '').toLowerCase();
+  // Check text content of the popup/modal/dialog itself
+  const closestContainer = el.closest(
+    '[class*="modal"], [class*="popup"], [class*="overlay"], [class*="dialog"], [role="dialog"], ' +
+    '[class*="widget"], [class*="chat"], [class*="contact"]'
+  );
+  if (closestContainer) {
+    const text = (closestContainer.textContent || '').toLowerCase();
     if (CHAT_WIDGET_TEXT_PATTERNS.some((p) => text.includes(p))) {
       return true;
     }
@@ -215,6 +220,12 @@ function isChatWidget(el: Element): boolean {
 }
 
 /**
+ * Elements we've already clicked to dismiss. Prevents cycling when a
+ * widget re-opens after being dismissed (e.g. chat toggle buttons).
+ */
+const dismissedElements = new WeakSet<Element>();
+
+/**
  * Dismiss any visible modal/popup overlays that might block form interaction.
  * Skips live chat / contact-us widgets that aren't blocking the form.
  * Returns true if a modal was dismissed.
@@ -228,13 +239,21 @@ export function dismissModals(): boolean {
       const el = btn as HTMLElement;
       if (!isVisible(el)) continue;
 
+      // Don't re-click elements we've already dismissed — prevents cycling
+      if (dismissedElements.has(el)) continue;
+
       // Skip chat/contact widgets — these aren't blocking modals
       if (isChatWidget(el)) continue;
 
       const text = (el.textContent || '').trim();
-      // Click buttons that look like close/dismiss (×, X, Close, or empty icon buttons)
+      // Only click buttons that look like close/dismiss (×, X, Close, or empty icon buttons)
+      // Skip empty-text buttons inside role="dialog" — too likely to be toggle/action buttons
+      const isDialogButton = el.closest('[role="dialog"]') !== null;
+      if (text === '' && isDialogButton) continue;
+
       if (text === '×' || text === 'X' || text === '' || text.toLowerCase() === 'close'
         || text.toLowerCase().includes('dismiss') || text.toLowerCase().includes('no thanks')) {
+        dismissedElements.add(el);
         el.click();
         dismissed = true;
       }

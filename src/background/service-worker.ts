@@ -51,7 +51,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return true;
 
     case 'GET_QUOTE_RUN_STATUS':
-      sendResponse({ run: currentRun });
+      sendResponse({
+        run: currentRun,
+        tabIds: Object.fromEntries(adapterTabMap),
+      });
       return false;
 
     case 'AUTOMATION_PROGRESS':
@@ -215,6 +218,13 @@ async function handleStartQuoteRun(message: {
       adapterTabMap.set(adapterId, tabId);
     },
     onItemUpdate(item: QuoteRunItem) {
+      // Keep currentRun in sync so GET_QUOTE_RUN_STATUS always returns fresh data
+      if (currentRun) {
+        currentRun.items = currentRun.items.map((i) =>
+          i.adapterId === item.adapterId ? item : i
+        );
+      }
+
       const tabId = adapterTabMap.get(item.adapterId);
       broadcastMessage({
         type: 'QUOTE_ITEM_UPDATE',
