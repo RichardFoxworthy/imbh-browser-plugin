@@ -10,6 +10,10 @@
 import type { UserProfile } from '../profile/types';
 import type { QuoteRun, QuoteRunItem } from './types';
 import { uid } from '../shared/utils';
+import { clearSiteData } from '../fingerprint/site-data';
+import { pickRandomUA } from '../fingerprint/ua-pool';
+import { applyUAHeaderRules, clearUAHeaderRules } from '../fingerprint/header-rules';
+import type { FingerprintSession } from '../fingerprint/types';
 
 export interface QuoteRunnerCallbacks {
   onItemUpdate: (item: QuoteRunItem) => void;
@@ -44,6 +48,15 @@ export async function runQuotes(
   productType: 'home' | 'motor',
   callbacks: QuoteRunnerCallbacks
 ): Promise<QuoteRun> {
+  // Generate a fresh fingerprint session for this run
+  const ua = pickRandomUA();
+  const fingerprintSession: FingerprintSession = {
+    seed: crypto.getRandomValues(new Uint32Array(1))[0],
+    ...ua,
+  };
+  await chrome.storage.session.set({ fingerprintSession });
+  await applyUAHeaderRules(ua.userAgent);
+
   const run: QuoteRun = {
     id: uid(),
     items: adapters.map((a) => ({
@@ -70,6 +83,10 @@ export async function runQuotes(
     callbacks.onItemUpdate(item);
 
     try {
+      // Clear cookies, localStorage, cache for this insurer origin
+      const origin = new URL(adapter.startUrl).origin;
+      await clearSiteData(origin);
+
       // Open a new tab with the insurer's quote start page
       const tab = await chrome.tabs.create({
         url: adapter.startUrl,
@@ -148,6 +165,10 @@ export async function runQuotes(
       );
     }
   }
+
+  // Clean up fingerprint spoofing so normal browsing is unaffected
+  await clearUAHeaderRules();
+  await chrome.storage.session.remove('fingerprintSession');
 
   run.completedAt = new Date().toISOString();
   callbacks.onRunComplete(run);

@@ -12,17 +12,24 @@ function contentScriptPlugin() {
   return {
     name: 'content-script-iife',
     writeBundle() {
-      const result = buildSync({
-        entryPoints: [resolve(__dirname, 'src/content/content-script.ts')],
-        bundle: true,
-        format: 'iife',
-        outfile: resolve(__dirname, 'dist/content.js'),
-        minify: true,
-        target: 'chrome110',
-        tsconfig: resolve(__dirname, 'tsconfig.json'),
-      });
-      if (result.errors.length > 0) {
-        console.error('Content script build errors:', result.errors);
+      const iifeEntries = [
+        { entry: 'src/content/content-script.ts', out: 'dist/content.js' },
+        { entry: 'src/fingerprint/spoof-inject.ts', out: 'dist/fingerprint-spoof.js' },
+        { entry: 'src/fingerprint/fingerprint-relay.ts', out: 'dist/fingerprint-relay.js' },
+      ];
+      for (const { entry, out } of iifeEntries) {
+        const result = buildSync({
+          entryPoints: [resolve(__dirname, entry)],
+          bundle: true,
+          format: 'iife',
+          outfile: resolve(__dirname, out),
+          minify: true,
+          target: 'chrome110',
+          tsconfig: resolve(__dirname, 'tsconfig.json'),
+        });
+        if (result.errors.length > 0) {
+          console.error(`IIFE build errors (${entry}):`, result.errors);
+        }
       }
     },
   };
