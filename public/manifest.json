@@ -10,6 +10,7 @@
     "sidePanel",
     "alarms",
     "browsingData",
+    "cookies",
     "declarativeNetRequest"
   ],
   "host_permissions": [

@@ -10,7 +10,7 @@
 import type { UserProfile } from '../profile/types';
 import type { QuoteRun, QuoteRunItem } from './types';
 import { uid } from '../shared/utils';
-import { clearSiteData } from '../fingerprint/site-data';
+import { clearSiteData, clearDomainCookies } from '../fingerprint/site-data';
 import { pickRandomUA } from '../fingerprint/ua-pool';
 import { applyUAHeaderRules, clearUAHeaderRules } from '../fingerprint/header-rules';
 import type { FingerprintSession } from '../fingerprint/types';
@@ -83,9 +83,13 @@ export async function runQuotes(
     callbacks.onItemUpdate(item);
 
     try {
-      // Clear cookies, localStorage, cache for this insurer origin
-      const origin = new URL(adapter.startUrl).origin;
-      await clearSiteData(origin);
+      // Clear cookies, localStorage, cache for this insurer origin.
+      // Also clear common subdomains (e.g. secure.*) so cross-origin
+      // redirects don't carry stale cookies from a previous visit.
+      const startOrigin = new URL(adapter.startUrl).origin;
+      const baseDomain = new URL(adapter.startUrl).hostname.replace(/^www\./, '');
+      await clearSiteData(startOrigin);
+      await clearDomainCookies(baseDomain);
 
       // Open a new tab with the insurer's quote start page
       const tab = await chrome.tabs.create({
@@ -99,24 +103,6 @@ export async function runQuotes(
 
       // Wait for page to load
       await waitForTabLoad(tab.id);
-
-      // If the tab redirected to a different origin (e.g. www → secure
-      // subdomain), stale cookies from a previous visit may have been
-      // sent with the initial request. Clear data for the new origin and
-      // reload so the insurer sees a clean first visit.
-      try {
-        const loadedTab = await chrome.tabs.get(tab.id);
-        if (loadedTab.url) {
-          const loadedOrigin = new URL(loadedTab.url).origin;
-          if (loadedOrigin !== origin) {
-            await clearSiteData(loadedOrigin);
-            await chrome.tabs.reload(tab.id);
-            await waitForTabLoad(tab.id);
-          }
-        }
-      } catch {
-        // Tab may have been closed; continue anyway
-      }
 
       // Get the adapter's steps
       const steps = adapter.getSteps(profile);

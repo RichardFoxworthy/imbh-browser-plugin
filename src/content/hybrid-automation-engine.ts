@@ -319,7 +319,8 @@ export async function executeHybridSteps(
   {
     const initialMatch = matchStepToUrl(steps, completedStepIds, window.location.href);
     if (!initialMatch) {
-      addLog('init', `Initial URL (${window.location.hash || window.location.pathname}) doesn't match any step — waiting for form to load`, true);
+      const initialHash = window.location.hash || window.location.pathname;
+      addLog('init', `Initial URL (${initialHash}) doesn't match any step — waiting for form to load`, true);
       emitProgress(0, 'Loading', 'running', 'Waiting for form to load…');
 
       const waitStart = Date.now();
@@ -328,14 +329,19 @@ export async function executeHybridSteps(
 
       while (Date.now() - waitStart < maxWaitMs) {
         await new Promise((r) => setTimeout(r, 1500));
+
+        // Primary: URL now matches a known step
         if (matchStepToUrl(steps, completedStepIds, window.location.href)) {
           found = true;
           break;
         }
-        // If the page now has substantial content, stop waiting — the
-        // form may have loaded in place without a URL change
-        const bodyLen = (document.body?.innerText || '').trim().length;
-        if (bodyLen > 200) {
+
+        // Secondary: URL hash changed to something different from the
+        // initial landing hash — the SPA navigated, worth re-entering
+        // the main loop even if the new URL isn't a known step
+        const currentHash = window.location.hash || window.location.pathname;
+        if (currentHash !== initialHash) {
+          addLog('init', `URL changed from ${initialHash} to ${currentHash}`, true);
           found = true;
           break;
         }
