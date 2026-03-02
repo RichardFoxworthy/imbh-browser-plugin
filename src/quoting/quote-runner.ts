@@ -100,6 +100,24 @@ export async function runQuotes(
       // Wait for page to load
       await waitForTabLoad(tab.id);
 
+      // If the tab redirected to a different origin (e.g. www → secure
+      // subdomain), stale cookies from a previous visit may have been
+      // sent with the initial request. Clear data for the new origin and
+      // reload so the insurer sees a clean first visit.
+      try {
+        const loadedTab = await chrome.tabs.get(tab.id);
+        if (loadedTab.url) {
+          const loadedOrigin = new URL(loadedTab.url).origin;
+          if (loadedOrigin !== origin) {
+            await clearSiteData(loadedOrigin);
+            await chrome.tabs.reload(tab.id);
+            await waitForTabLoad(tab.id);
+          }
+        }
+      } catch {
+        // Tab may have been closed; continue anyway
+      }
+
       // Get the adapter's steps
       const steps = adapter.getSteps(profile);
 

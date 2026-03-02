@@ -311,6 +311,48 @@ export async function executeHybridSteps(
   // -----------------------------------------------------------------
   // URL-driven / mixed: while-loop with step detection
   // -----------------------------------------------------------------
+
+  // Wait for the initial page to reach a recognized step URL.
+  // Some insurers redirect through transient pages (e.g. #!/referral,
+  // landing trackers) before the actual form starts. We poll for a URL
+  // change rather than immediately entering the step-detection loop.
+  {
+    const initialMatch = matchStepToUrl(steps, completedStepIds, window.location.href);
+    if (!initialMatch) {
+      addLog('init', `Initial URL (${window.location.hash || window.location.pathname}) doesn't match any step — waiting for form to load`, true);
+      emitProgress(0, 'Loading', 'running', 'Waiting for form to load…');
+
+      const waitStart = Date.now();
+      const maxWaitMs = 30000;
+      let found = false;
+
+      while (Date.now() - waitStart < maxWaitMs) {
+        await new Promise((r) => setTimeout(r, 1500));
+        if (matchStepToUrl(steps, completedStepIds, window.location.href)) {
+          found = true;
+          break;
+        }
+        // If the page now has substantial content, stop waiting — the
+        // form may have loaded in place without a URL change
+        const bodyLen = (document.body?.innerText || '').trim().length;
+        if (bodyLen > 200) {
+          found = true;
+          break;
+        }
+      }
+
+      if (!found) {
+        addLog('init', 'Form URL never appeared — page may have failed to load', false);
+        emitProgress(0, 'Error', 'error',
+          'The insurer page did not load the expected form. It may be temporarily unavailable.');
+        return {
+          success: false, quote: null, log, contributions,
+          error: 'Insurer form did not load (stuck on landing/referral page)',
+        };
+      }
+    }
+  }
+
   let iteration = 0;
   let consecutiveUnknownPages = 0;
 
