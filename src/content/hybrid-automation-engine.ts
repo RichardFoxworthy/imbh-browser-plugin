@@ -314,8 +314,9 @@ export async function executeHybridSteps(
 
   // Wait for the initial page to reach a recognized step URL.
   // Some insurers redirect through transient pages (e.g. #!/referral,
-  // landing trackers) before the actual form starts. We poll for a URL
-  // match rather than immediately entering the step-detection loop.
+  // Cloudflare challenges, landing trackers) before the actual form
+  // starts. We poll for a URL match and also detect Cloudflare
+  // challenges so the user can be prompted to solve them.
   {
     const initialMatch = matchStepToUrl(steps, completedStepIds, window.location.href);
     if (!initialMatch) {
@@ -325,27 +326,43 @@ export async function executeHybridSteps(
       const waitStart = Date.now();
       const maxWaitMs = 30000;
       let found = false;
+      let captchaReported = false;
 
       while (Date.now() - waitStart < maxWaitMs) {
         await new Promise((r) => setTimeout(r, 1500));
 
+        // Check for Cloudflare challenge — prompt user to solve it.
+        // After the user completes the challenge, Cloudflare navigates
+        // the page which destroys this content script. The challenge
+        // recovery mechanism in the quote runner will re-send the
+        // automation message to the new page.
+        if (detectCaptcha() && !captchaReported) {
+          captchaReported = true;
+          mode = 'paused-captcha';
+          addLog('captcha', 'Cloudflare challenge detected before form loaded', true);
+          emitProgress(0, 'CAPTCHA', 'paused-captcha',
+            'Please solve the CAPTCHA in the insurer tab, then automation will continue.');
+        }
+
         if (matchStepToUrl(steps, completedStepIds, window.location.href)) {
           found = true;
+          mode = 'auto';
           break;
         }
       }
 
       if (!found) {
-        const bodyText = (document.body?.innerText || '').trim();
-        const hint = bodyText.length < 50
-          ? ' The page appears blank — the insurer may be blocking this connection (VPN, firewall, or bot detection).'
-          : '';
-        addLog('init', `Form URL never appeared after ${maxWaitMs / 1000}s — page may have failed to load`, false);
+        const hint = captchaReported
+          ? ' A Cloudflare challenge was detected — please solve it in the insurer tab.'
+          : (document.body?.innerText || '').trim().length < 50
+            ? ' The page appears blank — the insurer may be blocking this connection (VPN, firewall, or bot detection).'
+            : '';
+        addLog('init', `Form URL never appeared after ${maxWaitMs / 1000}s`, false);
         emitProgress(0, 'Error', 'error',
           `The insurer page did not load the expected form.${hint}`);
         return {
           success: false, quote: null, log, contributions,
-          error: `Insurer form did not load (stuck on landing/referral page).${hint}`,
+          error: `Insurer form did not load.${hint}`,
         };
       }
     }

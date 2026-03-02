@@ -64,7 +64,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return false;
 
     case 'AUTOMATION_PROGRESS':
-      handleAutomationProgress(message);
+      handleAutomationProgress(message, sender);
       return false;
 
     case 'SUBMIT_CONTRIBUTIONS':
@@ -269,11 +269,16 @@ async function handleStartQuoteRun(message: {
   return { success: true, runId };
 }
 
-function handleAutomationProgress(progress: any) {
+function handleAutomationProgress(progress: any, sender: chrome.runtime.MessageSender) {
   broadcastMessage({
     type: 'AUTOMATION_PROGRESS',
     ...progress,
   });
+
+  // Bring the tab to the foreground when a CAPTCHA needs user attention
+  if (progress.status === 'paused-captcha' && sender.tab?.id) {
+    chrome.tabs.update(sender.tab.id, { active: true }).catch(() => {});
+  }
 }
 
 /**
