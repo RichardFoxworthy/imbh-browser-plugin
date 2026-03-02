@@ -277,23 +277,15 @@ function raceMessageWithNavigation(
     // Ignore SPA hash changes — the content script context survives those
     // and the automation is still running.
     //
-    // We track whether the tab goes through a 'loading' status, which
-    // indicates a real page reload (Cloudflare challenge → actual site,
-    // even when the URL stays the same). This handles same-URL redirects
-    // that Cloudflare sometimes uses.
-    let sawLoading = false;
-
+    // Only detect navigation via URL origin+pathname changes. Same-URL
+    // reloads (e.g. Cloudflare JS challenges) are handled by the catch
+    // path in sendWithChallengeRecovery — when the content script context
+    // is destroyed, sendMessage rejects with "message port closed".
     function onUpdated(
       updatedTabId: number,
       changeInfo: { status?: string; url?: string }
     ) {
       if (updatedTabId !== tabId || settled) return;
-
-      // Track loading state — real navigations go through loading,
-      // SPA hash changes do not
-      if (changeInfo.status === 'loading') {
-        sawLoading = true;
-      }
 
       if (changeInfo.url) {
         // Check if this is a real navigation (origin+pathname changed)
@@ -307,15 +299,6 @@ function raceMessageWithNavigation(
           }
         } catch {}
 
-        settled = true;
-        cleanup();
-        resolve({ navigated: true });
-        return;
-      }
-
-      // Detect same-URL full reload: tab went through loading → complete
-      // without a URL change (Cloudflare redirect back to same URL)
-      if (changeInfo.status === 'complete' && sawLoading) {
         settled = true;
         cleanup();
         resolve({ navigated: true });
