@@ -43,9 +43,24 @@ const LOADING_SELECTORS = [
  * Find and click the "next" / "continue" button using an explicit selector
  * or by scanning for common patterns.
  */
-export async function clickNext(explicitSelector?: string): Promise<boolean> {
-  // Try explicit selector first
-  if (explicitSelector) {
+export async function clickNext(explicitSelector?: string, explicitText?: string): Promise<boolean> {
+  // If we have both a selector and specific text, find a matching element
+  // with that text — avoids clicking the wrong button when the selector
+  // is generic (e.g. "button")
+  if (explicitSelector && explicitText) {
+    const candidates = document.querySelectorAll(explicitSelector);
+    const target = explicitText.toLowerCase();
+    for (const btn of candidates) {
+      const btnText = (btn.textContent || '').toLowerCase().trim();
+      if (btnText.includes(target) && isVisible(btn as HTMLElement)) {
+        await clickWithHumanDelay(btn as HTMLElement);
+        return true;
+      }
+    }
+  }
+
+  // Try explicit selector (without text constraint)
+  if (explicitSelector && !explicitText) {
     const el = await waitForElement(explicitSelector, { timeout: 5000 });
     if (el) {
       await clickWithHumanDelay(el as HTMLElement);

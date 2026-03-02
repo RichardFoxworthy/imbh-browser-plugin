@@ -150,27 +150,40 @@ export async function runQuotes(
   return run;
 }
 
-/** Wait for a tab to finish loading. */
+/** Wait for a tab to finish loading. Rejects immediately if the tab is removed. */
 function waitForTabLoad(tabId: number, timeoutMs = 30000): Promise<void> {
   return new Promise((resolve, reject) => {
+    function cleanup() {
+      clearTimeout(timeout);
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+      chrome.tabs.onRemoved.removeListener(onRemoved);
+    }
+
     const timeout = setTimeout(() => {
-      chrome.tabs.onUpdated.removeListener(listener);
+      cleanup();
       reject(new Error('Tab load timeout'));
     }, timeoutMs);
 
-    function listener(
+    function onUpdated(
       updatedTabId: number,
       changeInfo: { status?: string }
     ) {
       if (updatedTabId === tabId && changeInfo.status === 'complete') {
-        clearTimeout(timeout);
-        chrome.tabs.onUpdated.removeListener(listener);
+        cleanup();
         // Extra delay for JS frameworks to hydrate
         setTimeout(resolve, 2000);
       }
     }
 
-    chrome.tabs.onUpdated.addListener(listener);
+    function onRemoved(removedTabId: number) {
+      if (removedTabId === tabId) {
+        cleanup();
+        reject(new Error('Tab was closed or crashed'));
+      }
+    }
+
+    chrome.tabs.onUpdated.addListener(onUpdated);
+    chrome.tabs.onRemoved.addListener(onRemoved);
   });
 }
 
@@ -235,6 +248,11 @@ function raceMessageWithNavigation(
   return new Promise((resolve, reject) => {
     let settled = false;
 
+    function cleanup() {
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+      chrome.tabs.onRemoved.removeListener(onRemoved);
+    }
+
     // Listen for the tab navigating to a new URL (full page navigation).
     // changeInfo.url is only present when the URL actually changes,
     // making it a reliable signal for Cloudflare challenge resolution.
@@ -246,25 +264,33 @@ function raceMessageWithNavigation(
 
       if (changeInfo.url) {
         settled = true;
-        chrome.tabs.onUpdated.removeListener(onUpdated);
+        cleanup();
         resolve({ navigated: true });
       }
     }
 
+    function onRemoved(removedTabId: number) {
+      if (removedTabId !== tabId || settled) return;
+      settled = true;
+      cleanup();
+      reject(new Error('Tab was closed or crashed'));
+    }
+
     chrome.tabs.onUpdated.addListener(onUpdated);
+    chrome.tabs.onRemoved.addListener(onRemoved);
 
     chrome.tabs.sendMessage(tabId, message).then(
       (response) => {
         if (!settled) {
           settled = true;
-          chrome.tabs.onUpdated.removeListener(onUpdated);
+          cleanup();
           resolve({ navigated: false, response });
         }
       },
       (err) => {
         if (!settled) {
           settled = true;
-          chrome.tabs.onUpdated.removeListener(onUpdated);
+          cleanup();
           reject(err);
         }
       }

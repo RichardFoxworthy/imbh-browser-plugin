@@ -519,9 +519,9 @@ export async function executeHybridSteps(
     // 9. Navigate: click next, wait for URL change + page stable
     if (step.nextAction) {
       const urlBefore = window.location.href;
-      addLog('navigate', `Clicking next: ${step.nextAction.selector || 'auto-detect'}`, true);
-      await randomDelay(1000, 3000);
-      const clicked = await clickNext(step.nextAction.selector);
+      addLog('navigate', `Clicking next: ${step.nextAction.selector || 'auto-detect'}${step.nextAction.text ? ` ("${step.nextAction.text}")` : ''}`, true);
+      await randomDelay(500, 1500);
+      const clicked = await clickNext(step.nextAction.selector, step.nextAction.text);
       if (!clicked) {
         addLog('navigate', 'Could not find next button', false);
       }
@@ -529,12 +529,12 @@ export async function executeHybridSteps(
       // Wait for URL change (SPA) + page transition
       await waitForUrlChange(urlBefore, step.timeout || 15000);
       await waitForPageTransition(step.timeout || 15000);
-      await randomDelay(3000, 8000);
+      await randomDelay(800, 2000);
     } else {
       // No explicit nextAction — auto-advancing step (e.g. button-select).
       // The click during field-fill likely changed the URL already.
       // Brief wait for the SPA to settle, then loop re-detects.
-      await randomDelay(1000, 3000);
+      await randomDelay(500, 1500);
       await waitForPageStable(1500);
     }
 
@@ -731,15 +731,15 @@ async function executeSequentialSteps(
 
     // Navigate to next step
     if (step.nextAction) {
-      addLog('navigate', `Clicking next: ${step.nextAction.selector || 'auto-detect'}`, true);
-      await randomDelay(1000, 3000);
-      const clicked = await clickNext(step.nextAction.selector);
+      addLog('navigate', `Clicking next: ${step.nextAction.selector || 'auto-detect'}${step.nextAction.text ? ` ("${step.nextAction.text}")` : ''}`, true);
+      await randomDelay(500, 1500);
+      const clicked = await clickNext(step.nextAction.selector, step.nextAction.text);
       if (!clicked) {
         addLog('navigate', 'Could not find next button', false);
       }
 
       await waitForPageTransition(step.timeout || 15000);
-      await randomDelay(3000, 8000);
+      await randomDelay(800, 2000);
     }
   }
 
