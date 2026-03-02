@@ -247,15 +247,26 @@ function raceMessageWithNavigation(
 ): Promise<{ navigated: true } | { navigated: false; response: any }> {
   return new Promise((resolve, reject) => {
     let settled = false;
+    // Capture the initial URL origin+pathname so we can distinguish
+    // SPA hash changes from real full-page navigations
+    let initialOriginPath: string | null = null;
+    chrome.tabs.get(tabId).then((tab) => {
+      if (tab.url) {
+        try {
+          const u = new URL(tab.url);
+          initialOriginPath = u.origin + u.pathname;
+        } catch {}
+      }
+    }).catch(() => {});
 
     function cleanup() {
       chrome.tabs.onUpdated.removeListener(onUpdated);
       chrome.tabs.onRemoved.removeListener(onRemoved);
     }
 
-    // Listen for the tab navigating to a new URL (full page navigation).
-    // changeInfo.url is only present when the URL actually changes,
-    // making it a reliable signal for Cloudflare challenge resolution.
+    // Listen for full-page navigation (Cloudflare challenge resolution).
+    // Ignore SPA hash changes — the content script context survives those
+    // and the automation is still running.
     function onUpdated(
       updatedTabId: number,
       changeInfo: { status?: string; url?: string }
@@ -263,6 +274,17 @@ function raceMessageWithNavigation(
       if (updatedTabId !== tabId || settled) return;
 
       if (changeInfo.url) {
+        // Check if this is a real navigation (origin+pathname changed)
+        // vs a SPA hash change (only fragment changed)
+        try {
+          const newUrl = new URL(changeInfo.url);
+          const newOriginPath = newUrl.origin + newUrl.pathname;
+          if (initialOriginPath && newOriginPath === initialOriginPath) {
+            // Same origin+pathname — just a hash change, ignore
+            return;
+          }
+        } catch {}
+
         settled = true;
         cleanup();
         resolve({ navigated: true });
