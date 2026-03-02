@@ -461,7 +461,7 @@ export async function executeHybridSteps(
     // 6. AUTO mode: fill fields
     await waitForPageStable(800);
 
-    const { filledCount, skippedFields } = await fillStepFields(
+    const { filledCount, skippedFields, missingProfileFields } = await fillStepFields(
       step, profile, adaptorId, onSelectorHealth, addLog
     );
 
@@ -469,23 +469,23 @@ export async function executeHybridSteps(
       `Filled ${filledCount}/${step.fields.length} fields`,
       filledCount, skippedFields, step.id);
 
-    // 7. High failure rate or all fields missing → assist mode
+    // 7. Missing profile data or high failure rate → assist mode
     const failRate = step.fields.length > 0
       ? skippedFields.length / step.fields.length
       : 0;
 
-    // Enter assist if: all fields skipped (missing profile data) OR
-    // high failure rate on steps with multiple fields
-    const needsAssist = step.fields.length > 0 && (
-      filledCount === 0 || (failRate > 0.5 && step.fields.length > 2)
+    // Enter assist if: any fields have missing profile data (user must
+    // provide them for the form to advance) OR high selector failure rate
+    const needsAssist = missingProfileFields.length > 0 || (
+      step.fields.length > 0 && failRate > 0.5 && step.fields.length > 2
     );
 
     if (needsAssist) {
       const reason = filledCount === 0
         ? `We don't have profile data for this step. Please answer the "${step.name}" question manually.`
-        : `${skippedFields.length} of ${step.fields.length} fields couldn't be filled automatically. Please complete the missing fields.`;
+        : `${missingProfileFields.length} field${missingProfileFields.length !== 1 ? 's' : ''} missing from your profile. Please complete the missing fields.`;
 
-      addLog('assist', `Assist needed: ${filledCount === 0 ? 'no profile data' : 'high failure rate'} (${Math.round(failRate * 100)}%)`, true);
+      addLog('assist', `Assist needed: ${missingProfileFields.length} missing profile field(s), ${skippedFields.length} total skipped (${Math.round(failRate * 100)}%)`, true);
       mode = 'assist';
 
       emitProgress(stepIdx, step.name, 'assist-needed', reason,
@@ -686,7 +686,7 @@ async function executeSequentialSteps(
     }
 
     // Fill fields
-    const { filledCount, skippedFields } = await fillStepFields(
+    const { filledCount, skippedFields, missingProfileFields } = await fillStepFields(
       step, profile, adaptorId, onSelectorHealth, addLog
     );
 
@@ -694,21 +694,21 @@ async function executeSequentialSteps(
       `Filled ${filledCount}/${step.fields.length} fields`,
       filledCount, skippedFields, step.id);
 
-    // If too many fields failed or all missing, switch to assist for this step
+    // Missing profile data or high failure rate → assist mode
     const failRate = step.fields.length > 0
       ? skippedFields.length / step.fields.length
       : 0;
 
-    const needsAssist = step.fields.length > 0 && (
-      filledCount === 0 || (failRate > 0.5 && step.fields.length > 2)
+    const needsAssist = missingProfileFields.length > 0 || (
+      step.fields.length > 0 && failRate > 0.5 && step.fields.length > 2
     );
 
     if (needsAssist) {
       const reason = filledCount === 0
         ? `We don't have profile data for this step. Please answer the "${step.name}" question manually.`
-        : `${skippedFields.length} of ${step.fields.length} fields couldn't be filled automatically. Please complete the missing fields.`;
+        : `${missingProfileFields.length} field${missingProfileFields.length !== 1 ? 's' : ''} missing from your profile. Please complete the missing fields.`;
 
-      addLog('assist', `Assist needed: ${filledCount === 0 ? 'no profile data' : 'high failure rate'} (${Math.round(failRate * 100)}%)`, true);
+      addLog('assist', `Assist needed: ${missingProfileFields.length} missing profile field(s), ${skippedFields.length} total skipped (${Math.round(failRate * 100)}%)`, true);
       mode = 'assist';
 
       emitProgress(stepIdx, step.name, 'assist-needed', reason,
@@ -826,14 +826,16 @@ async function fillStepFields(
   adaptorId: string,
   onSelectorHealth: ((event: SelectorHealthEvent) => void) | undefined,
   addLog: (action: string, detail: string, success: boolean) => void
-): Promise<{ filledCount: number; skippedFields: string[] }> {
+): Promise<{ filledCount: number; skippedFields: string[]; missingProfileFields: string[] }> {
   const skippedFields: string[] = [];
+  const missingProfileFields: string[] = [];
   let filledCount = 0;
 
   for (const fieldMapping of step.fields) {
     const rawValue = resolvePath(profile as any, fieldMapping.profilePath);
     if (rawValue === undefined || rawValue === null || rawValue === '') {
       skippedFields.push(fieldMapping.profilePath);
+      missingProfileFields.push(fieldMapping.profilePath);
       addLog('field', `Skipped ${fieldMapping.profilePath} — no value in profile`, false);
       continue;
     }
@@ -917,7 +919,7 @@ async function fillStepFields(
     await randomDelay(500, 2000);
   }
 
-  return { filledCount, skippedFields };
+  return { filledCount, skippedFields, missingProfileFields };
 }
 
 // ---------------------------------------------------------------------------

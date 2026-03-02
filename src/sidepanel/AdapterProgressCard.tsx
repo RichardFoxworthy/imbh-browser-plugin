@@ -58,8 +58,15 @@ export function AdapterProgressCard({ item, stepProgress, tabId }: Props) {
             </div>
           )}
 
-          {/* Status message */}
-          {!stepProgress && (
+          {/* Error message — always show */}
+          {item.status === 'error' && item.error && (
+            <div className="mt-1 text-xs text-red-600">
+              {item.error}
+            </div>
+          )}
+
+          {/* Status message for non-running, non-error states without step progress */}
+          {item.status !== 'running' && item.status !== 'error' && !stepProgress && (
             <div className={`text-xs ${statusColors[item.status]}`}>
               {item.message}
             </div>

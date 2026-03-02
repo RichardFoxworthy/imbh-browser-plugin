@@ -73,7 +73,7 @@ export function QuoteProgress({ onComplete }: Props) {
                   {item.provider}
                 </div>
                 <div className={`text-xs ${statusColors[item.status]}`}>
-                  {item.message}
+                  {item.status === 'error' && item.error ? item.error : item.message}
                 </div>
               </div>
               {item.result && (
