@@ -108,12 +108,20 @@ function matchStepToUrl(
  * Fallback: find the first uncompleted step whose waitForSelector (or
  * fallbackWaitSelectors) matches something in the current DOM.
  * Uses short timeouts to avoid long waits.
+ *
+ * Only considers steps WITHOUT a urlPattern — steps that have a URL
+ * pattern should only match via URL. This prevents generic selectors
+ * like "button" from falsely matching on the wrong page.
  */
 async function matchStepBySelector(
   steps: AdaptorStep[],
   completedStepIds: Set<string>
 ): Promise<AdaptorStep | null> {
-  for (const step of steps) {
+  // Only consider steps that don't have a URL pattern — if a step has
+  // a urlPattern it should only match via matchStepToUrl, not here
+  const selectorOnlySteps = steps.filter((s) => !s.urlPattern);
+
+  for (const step of selectorOnlySteps) {
     if (completedStepIds.has(step.id)) continue;
 
     // Quick synchronous check first (no waiting)
@@ -129,7 +137,7 @@ async function matchStepBySelector(
   }
 
   // Second pass with short async waits for dynamic content
-  for (const step of steps) {
+  for (const step of selectorOnlySteps) {
     if (completedStepIds.has(step.id)) continue;
 
     const el = await waitForElement(step.waitForSelector, { timeout: 1500 });
@@ -455,23 +463,32 @@ export async function executeHybridSteps(
       `Filled ${filledCount}/${step.fields.length} fields`,
       filledCount, skippedFields, step.id);
 
-    // 7. High failure rate → assist mode
+    // 7. High failure rate or all fields missing → assist mode
     const failRate = step.fields.length > 0
       ? skippedFields.length / step.fields.length
       : 0;
 
-    if (failRate > 0.5 && step.fields.length > 2) {
-      addLog('assist', `High field failure rate (${Math.round(failRate * 100)}%), offering assist mode`, true);
+    // Enter assist if: all fields skipped (missing profile data) OR
+    // high failure rate on steps with multiple fields
+    const needsAssist = step.fields.length > 0 && (
+      filledCount === 0 || (failRate > 0.5 && step.fields.length > 2)
+    );
+
+    if (needsAssist) {
+      const reason = filledCount === 0
+        ? `We don't have profile data for this step. Please answer the "${step.name}" question manually.`
+        : `${skippedFields.length} of ${step.fields.length} fields couldn't be filled automatically. Please complete the missing fields.`;
+
+      addLog('assist', `Assist needed: ${filledCount === 0 ? 'no profile data' : 'high failure rate'} (${Math.round(failRate * 100)}%)`, true);
       mode = 'assist';
 
-      emitProgress(stepIdx, step.name, 'assist-needed',
-        `Some fields couldn't be filled automatically. Please complete the remaining fields.`,
+      emitProgress(stepIdx, step.name, 'assist-needed', reason,
         filledCount, skippedFields, step.id);
 
       const assistResult = await showAssistOverlay({
         adaptorName,
         stepName: step.name,
-        reason: `${skippedFields.length} of ${step.fields.length} fields couldn't be filled automatically. Please complete the missing fields.`,
+        reason,
       });
 
       if (assistResult.completed && assistResult.interactions.length > 0) {
@@ -660,23 +677,30 @@ async function executeSequentialSteps(
       `Filled ${filledCount}/${step.fields.length} fields`,
       filledCount, skippedFields, step.id);
 
-    // If too many fields failed, consider switching to assist for this step
+    // If too many fields failed or all missing, switch to assist for this step
     const failRate = step.fields.length > 0
       ? skippedFields.length / step.fields.length
       : 0;
 
-    if (failRate > 0.5 && step.fields.length > 2) {
-      addLog('assist', `High field failure rate (${Math.round(failRate * 100)}%), offering assist mode`, true);
+    const needsAssist = step.fields.length > 0 && (
+      filledCount === 0 || (failRate > 0.5 && step.fields.length > 2)
+    );
+
+    if (needsAssist) {
+      const reason = filledCount === 0
+        ? `We don't have profile data for this step. Please answer the "${step.name}" question manually.`
+        : `${skippedFields.length} of ${step.fields.length} fields couldn't be filled automatically. Please complete the missing fields.`;
+
+      addLog('assist', `Assist needed: ${filledCount === 0 ? 'no profile data' : 'high failure rate'} (${Math.round(failRate * 100)}%)`, true);
       mode = 'assist';
 
-      emitProgress(stepIdx, step.name, 'assist-needed',
-        `Some fields couldn't be filled automatically. Please complete the remaining fields.`,
+      emitProgress(stepIdx, step.name, 'assist-needed', reason,
         filledCount, skippedFields, step.id);
 
       const assistResult = await showAssistOverlay({
         adaptorName,
         stepName: step.name,
-        reason: `${skippedFields.length} of ${step.fields.length} fields couldn't be filled automatically. Please complete the missing fields.`,
+        reason,
       });
 
       if (assistResult.completed && assistResult.interactions.length > 0) {
