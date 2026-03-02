@@ -169,6 +169,47 @@ export function detectQuotePage(quoteSelectors: string[]): boolean {
   return quoteSelectors.some((sel) => document.querySelector(sel) !== null);
 }
 
+/**
+ * Detect if the current page is a decline/refusal page.
+ * Returns the reason text if declined, or null if not a decline page.
+ */
+export function detectDecline(): string | null {
+  const bodyText = document.body?.innerText || '';
+
+  // Common decline phrases used by Australian insurers
+  const declinePatterns = [
+    /sorry[,.]?\s+we\s+can'?t\s+offer\s+you\s+insurance/i,
+    /we\s+cannot\s+offer\s+you\s+insurance/i,
+    /unable\s+to\s+(provide|offer|quote)/i,
+    /we'?re\s+unable\s+to\s+(insure|cover)/i,
+    /unfortunately[,.]?\s+we\s+(can'?t|cannot|are\s+unable)/i,
+    /your\s+application\s+has\s+been\s+(declined|rejected)/i,
+    /we\s+do\s+not\s+offer\s+insurance\s+at\s+this/i,
+    /this\s+property\s+is\s+not\s+eligible/i,
+    /we\s+are\s+unable\s+to\s+provide\s+a\s+quote/i,
+  ];
+
+  const matched = declinePatterns.some((p) => p.test(bodyText));
+  if (!matched) return null;
+
+  // Try to extract the reason — look for text after "because" or in a list
+  const becauseMatch = bodyText.match(
+    /(?:cannot|can't|unable to)[^.]*because[:\s]*([^\n.]+)/i
+  );
+  if (becauseMatch) return becauseMatch[1].trim();
+
+  // Look for bullet/list reasons
+  const reasonList = document.querySelectorAll('ul li, ol li');
+  for (const li of reasonList) {
+    const text = li.textContent?.trim();
+    if (text && text.length > 10 && text.length < 200) {
+      return text;
+    }
+  }
+
+  return 'The insurer declined to offer cover.';
+}
+
 /** Common selectors for modal/popup close buttons. */
 const MODAL_CLOSE_SELECTORS = [
   // ng-bootstrap (Budget Direct, etc.)

@@ -14,6 +14,7 @@ interface Props {
 
 export function ProgressView({ items, stepProgressMap, tabIdMap, isComplete, onViewResults }: Props) {
   const completed = items.filter((i) => i.status === 'completed').length;
+  const declined = items.filter((i) => i.status === 'declined').length;
   const total = items.length;
   const hasResults = completed > 0;
 
@@ -69,6 +70,10 @@ export function ProgressView({ items, stepProgressMap, tabIdMap, isComplete, onV
             <Button onClick={onViewResults} className="w-full">
               Compare Results
             </Button>
+          ) : declined > 0 && declined === total - completed ? (
+            <p className="text-sm text-orange-600 text-center">
+              All providers declined to offer cover. See reasons above.
+            </p>
           ) : (
             <p className="text-sm text-red-600 text-center">
               No quotes were retrieved successfully. Check the error messages above.

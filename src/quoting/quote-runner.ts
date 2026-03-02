@@ -114,6 +114,10 @@ export async function runQuotes(
         item.result = result.quote;
         item.message = `$${result.quote.premium.annual}/year`;
         item.progress = 100;
+      } else if (result.error?.startsWith('Declined:')) {
+        item.status = 'declined';
+        item.error = result.error;
+        item.message = result.error;
       } else {
         item.status = 'error';
         item.error = result.error || 'Quote extraction failed';

@@ -17,7 +17,7 @@
  */
 
 import { findField, fillField, readFieldValue } from './field-matcher';
-import { clickNext, waitForPageTransition, detectCaptcha, dismissModals } from './page-navigator';
+import { clickNext, waitForPageTransition, detectCaptcha, detectDecline, dismissModals } from './page-navigator';
 import { waitForElement, waitForPageStable } from './dom-observer';
 import { resolvePath, setPath, randomDelay, uid } from '../shared/utils';
 import { showAssistOverlay, hideAssistOverlay } from './assist-overlay';
@@ -40,7 +40,7 @@ export interface HybridProgress {
   stepName: string;
   stepId: string;
   completedSteps: number;
-  status: 'running' | 'assist-needed' | 'paused-captcha' | 'completed' | 'error';
+  status: 'running' | 'assist-needed' | 'paused-captcha' | 'completed' | 'error' | 'declined';
   message: string;
   filledFields: number;
   skippedFields: string[];
@@ -350,6 +350,17 @@ export async function executeHybridSteps(
       emitProgress(completedStepIds.size, 'Complete', 'completed',
         `Quote: $${quote.premium.annual}/year`);
       return { success: true, quote, log, contributions };
+    }
+
+    // 3b. Check for decline/refusal page
+    if (completedStepIds.size > 0) {
+      const declineReason = detectDecline();
+      if (declineReason) {
+        addLog('decline', `Insurer declined: ${declineReason}`, true);
+        emitProgress(completedStepIds.size, 'Declined', 'declined',
+          `Declined: ${declineReason}`);
+        return { success: false, quote: null, log, contributions, error: `Declined: ${declineReason}` };
+      }
     }
 
     // 4. Detect which step we're on
@@ -775,6 +786,17 @@ async function executeSequentialSteps(
   await waitForPageStable(2000);
 
   let quote = extractQuote(document);
+
+  // Check for decline/refusal before treating as unknown page
+  if (!quote) {
+    const declineReason = detectDecline();
+    if (declineReason) {
+      addLog('decline', `Insurer declined: ${declineReason}`, true);
+      emitProgress(steps.length, 'Declined', 'declined',
+        `Declined: ${declineReason}`);
+      return { success: false, quote: null, log, contributions, error: `Declined: ${declineReason}` };
+    }
+  }
 
   if (!quote) {
     const formElementCount = document.querySelectorAll('input, select, textarea').length;

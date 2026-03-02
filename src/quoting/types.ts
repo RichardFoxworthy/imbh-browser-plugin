@@ -5,6 +5,7 @@ export type QuoteRunStatus =
   | 'running'
   | 'completed'
   | 'error'
+  | 'declined'
   | 'paused-captcha'
   | 'paused-unknown-field'
   | 'skipped';

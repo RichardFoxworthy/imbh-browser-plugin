@@ -58,9 +58,9 @@ export function AdapterProgressCard({ item, stepProgress, tabId }: Props) {
             </div>
           )}
 
-          {/* Error message — always show */}
-          {item.status === 'error' && item.error && (
-            <div className="mt-1 text-xs text-red-600">
+          {/* Error/decline message — always show */}
+          {(item.status === 'error' || item.status === 'declined') && item.error && (
+            <div className={`mt-1 text-xs ${item.status === 'declined' ? 'text-orange-600' : 'text-red-600'}`}>
               {item.error}
             </div>
           )}
